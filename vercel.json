@@ -8,10 +8,6 @@
   ],
   "routes": [
     {
-      "src": "/webui/assets/(.*)",
-      "dest": "/static/admin/assets/$1"
-    },
-    {
       "src": "/(.*)",
       "dest": "app.py"
     }
