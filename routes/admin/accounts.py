@@ -17,6 +17,7 @@ from core.deepseek import (
 )
 from core.pow import compute_pow_answer
 from core.models import get_model_config
+from core.sse_parser import parse_sse_chunk_for_content
 
 from .auth import verify_admin
 
@@ -242,6 +243,7 @@ async def test_account_api(account: dict, model: str = "deepseek-chat", message:
         
         thinking_parts = []
         content_parts = []
+        current_fragment_type = "thinking" if thinking_enabled else "text"
         
         for line in completion_resp.iter_lines():
             if not line:
@@ -260,54 +262,19 @@ async def test_account_api(account: dict, model: str = "deepseek-chat", message:
             
             try:
                 chunk = json.loads(data_str)
-                if "v" in chunk:
-                    v_value = chunk["v"]
-                    path = chunk.get("p", "")
-                    
-                    if path == "response/search_status":
-                        continue
-                    
-                    ptype = "thinking" if "thinking" in path else "text"
-                    
-                    if isinstance(v_value, str):
-                        if v_value == "FINISHED":
-                            break
-                        if ptype == "thinking":
-                            thinking_parts.append(v_value)
-                        else:
-                            content_parts.append(v_value)
-                    elif isinstance(v_value, list):
-                        # DeepSeek V3 嵌套列表格式处理
-                        for item in v_value:
-                            if not isinstance(item, dict):
-                                continue
-                            if item.get("p") == "status" and item.get("v") == "FINISHED":
-                                break
-                            
-                            item_p = item.get("p", "")
-                            item_v = item.get("v")
-                            
-                            if item_p == "response/search_status":
-                                continue
-                            
-                            itype = "thinking" if "thinking" in item_p else "text"
-                            
-                            # 处理不同的 v 类型
-                            if isinstance(item_v, str) and item_v:
-                                if itype == "thinking":
-                                    thinking_parts.append(item_v)
-                                else:
-                                    content_parts.append(item_v)
-                            elif isinstance(item_v, list):
-                                # 内层可能是 [{"content": "text", ...}] 格式
-                                for inner in item_v:
-                                    if isinstance(inner, dict):
-                                        content = inner.get("content", "")
-                                        if content:
-                                            if itype == "thinking":
-                                                thinking_parts.append(content)
-                                            else:
-                                                content_parts.append(content)
+                # 使用共享的解析函数
+                contents, is_finished, current_fragment_type = parse_sse_chunk_for_content(
+                    chunk, thinking_enabled, current_fragment_type
+                )
+                
+                if is_finished:
+                    break
+                
+                for content, ctype in contents:
+                    if ctype == "thinking":
+                        thinking_parts.append(content)
+                    else:
+                        content_parts.append(content)
             except:
                 continue
         

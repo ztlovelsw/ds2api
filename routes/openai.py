@@ -137,7 +137,7 @@ async def chat_completions(request: Request):
                     def process_data():
                         nonlocal has_content
                         ptype = "text"
-                        response_started = False  # 追踪是否已开始正式回复
+                        current_fragment_type = "thinking" if thinking_enabled else "text"  # 追踪当前活跃的 fragment 类型
                         logger.info(f"[sse_stream] 开始处理数据流, session_id={session_id}")
                         try:
                             for raw_line in deepseek_resp.iter_lines():
@@ -203,33 +203,54 @@ async def chat_completions(request: Request):
                                                 result_queue.put(None)
                                                 return
                                             
-                                            # 检测是否开始正式回复
-                                            # 只有当 fragments 包含 RESPONSE 类型时才认为开始正式回复
+                                            # 检测 fragment 类型变化（来自直接的 fragments 路径或 BATCH 操作）
+                                            new_fragment_type = current_fragment_type
+                                            
+                                            # 检测 BATCH APPEND 格式: {'p': 'response', 'o': 'BATCH', 'v': [...]}
+                                            if chunk_path == "response" and isinstance(v_value, list):
+                                                for batch_item in v_value:
+                                                    if isinstance(batch_item, dict) and batch_item.get("p") == "fragments" and batch_item.get("o") == "APPEND":
+                                                        fragments = batch_item.get("v", [])
+                                                        for frag in fragments:
+                                                            if isinstance(frag, dict):
+                                                                frag_type = frag.get("type", "").upper()
+                                                                if frag_type == "THINK" or frag_type == "THINKING":
+                                                                    new_fragment_type = "thinking"
+                                                                elif frag_type == "RESPONSE":
+                                                                    new_fragment_type = "text"
+                                            
+                                            # 也检测直接的 fragments 路径
                                             if "response/fragments" in chunk_path and isinstance(v_value, list):
                                                 for frag in v_value:
-                                                    if isinstance(frag, dict) and frag.get("type", "").upper() == "RESPONSE":
-                                                        response_started = True
-                                                        break
+                                                    if isinstance(frag, dict):
+                                                        frag_type = frag.get("type", "").upper()
+                                                        if frag_type == "THINK" or frag_type == "THINKING":
+                                                            new_fragment_type = "thinking"
+                                                        elif frag_type == "RESPONSE":
+                                                            new_fragment_type = "text"
                                             
-                                            # 确定当前类型
+                                            # 确定当前内容类型
                                             if chunk_path == "response/thinking_content":
                                                 ptype = "thinking"
                                             elif chunk_path == "response/content":
                                                 ptype = "text"
-                                                response_started = True  # 有 response/content 也意味着开始正式回复
+                                            elif "response/fragments" in chunk_path and "/content" in chunk_path:
+                                                # 如 response/fragments/-1/content - 使用当前 fragment 类型
+                                                ptype = current_fragment_type
                                             elif "response/fragments" in chunk_path:
                                                 # fragments 的类型由内层 type 决定，默认用之前的 ptype
                                                 pass
                                             elif not chunk_path:
-                                                # 没有 p 字段的内容：
-                                                # - reasoner 模式下，未开始正式回复前是 thinking
-                                                # - 开始正式回复后是 text
-                                                if thinking_enabled and not response_started:
-                                                    ptype = "thinking"
+                                                # 空路径内容：使用当前活跃的 fragment 类型
+                                                if thinking_enabled:
+                                                    ptype = current_fragment_type
                                                 else:
                                                     ptype = "text"
                                             
-                                            logger.info(f"[sse_stream] ptype={ptype}, response_started={response_started}, chunk_path='{chunk_path}', v_type={type(v_value).__name__}, v={str(v_value)[:100]}")
+                                            # 更新 current_fragment_type 供后续处理使用
+                                            current_fragment_type = new_fragment_type
+                                            
+                                            logger.info(f"[sse_stream] ptype={ptype}, current_fragment_type={current_fragment_type}, chunk_path='{chunk_path}', v_type={type(v_value).__name__}, v={str(v_value)[:100]}")
                                             if isinstance(v_value, str):
                                                 # 检查是否是 FINISHED 状态
                                                 # 只有当 chunk_path 为空或为 "status" 时才认为是真正的结束
@@ -349,6 +370,7 @@ async def chat_completions(request: Request):
                                                         }
                                                         result_queue.put(chunk)
                                                         has_content = True
+
                                                 continue
                                             
                                             unified_chunk = {
@@ -363,6 +385,8 @@ async def chat_completions(request: Request):
                                                 "parent_id": -1
                                             }
                                             result_queue.put(unified_chunk)
+                                            
+
                                     except Exception as e:
                                         logger.warning(f"[sse_stream] 无法解析: {data_str}, 错误: {e}")
                                         error_type = "thinking" if ptype == "thinking" else "text"
@@ -567,6 +591,15 @@ async def chat_completions(request: Request):
                                                 prompt_tokens = len(final_prompt) // 4
                                                 reasoning_tokens = len(final_reasoning) // 4
                                                 completion_tokens = len(final_content) // 4
+                                                # 构建 message 对象
+                                                message_obj = {
+                                                    "role": "assistant",
+                                                    "content": final_content,
+                                                }
+                                                # 只有启用思考模式时才包含 reasoning_content
+                                                if thinking_enabled and final_reasoning:
+                                                    message_obj["reasoning_content"] = final_reasoning
+                                                
                                                 result = {
                                                     "id": completion_id,
                                                     "object": "chat.completion",
@@ -574,11 +607,7 @@ async def chat_completions(request: Request):
                                                     "model": model,
                                                     "choices": [{
                                                         "index": 0,
-                                                        "message": {
-                                                            "role": "assistant",
-                                                            "content": final_content,
-                                                            "reasoning_content": final_reasoning,
-                                                        },
+                                                        "message": message_obj,
                                                         "finish_reason": "stop",
                                                     }],
                                                     "usage": {
@@ -613,6 +642,15 @@ async def chat_completions(request: Request):
                         prompt_tokens = len(final_prompt) // 4
                         reasoning_tokens = len(final_reasoning) // 4
                         completion_tokens = len(final_content) // 4
+                        # 构建 message 对象
+                        message_obj = {
+                            "role": "assistant",
+                            "content": final_content,
+                        }
+                        # 只有启用思考模式时才包含 reasoning_content
+                        if thinking_enabled and final_reasoning:
+                            message_obj["reasoning_content"] = final_reasoning
+                        
                         result = {
                             "id": completion_id,
                             "object": "chat.completion",
@@ -620,11 +658,7 @@ async def chat_completions(request: Request):
                             "model": model,
                             "choices": [{
                                 "index": 0,
-                                "message": {
-                                    "role": "assistant",
-                                    "content": final_content,
-                                    "reasoning_content": final_reasoning,
-                                },
+                                "message": message_obj,
                                 "finish_reason": "stop",
                             }],
                             "usage": {
