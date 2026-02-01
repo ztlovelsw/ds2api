@@ -279,8 +279,21 @@ def index(request: Request):
 @router.get("/admin/{path:path}")
 async def webui(request: Request, path: str = ""):
     """提供 WebUI 静态文件"""
+    from core.config import logger
+    
+    logger.info(f"[webui] 请求路径: /admin/{path}, STATIC_ADMIN_DIR: {STATIC_ADMIN_DIR}")
+    
     # 检查 static/admin 目录是否存在
     if not os.path.isdir(STATIC_ADMIN_DIR):
+        logger.error(f"[webui] 目录不存在: {STATIC_ADMIN_DIR}")
+        # 列出当前工作目录的内容帮助调试
+        try:
+            import glob
+            cwd = os.getcwd()
+            files = glob.glob(os.path.join(cwd, "static", "**"), recursive=True)[:20]
+            logger.error(f"[webui] 当前工作目录: {cwd}, 可用文件: {files}")
+        except Exception as e:
+            logger.error(f"[webui] 列出文件失败: {e}")
         return HTMLResponse(
             content="<h1>WebUI not built</h1><p>Run <code>cd webui && npm run build</code> first.</p>",
             status_code=404
@@ -289,8 +302,16 @@ async def webui(request: Request, path: str = ""):
     # 如果请求的是具体文件（如 js, css）
     if path and "." in path:
         file_path = os.path.join(STATIC_ADMIN_DIR, path)
+        logger.info(f"[webui] 查找文件: {file_path}, 存在: {os.path.isfile(file_path)}")
         if os.path.isfile(file_path):
             return FileResponse(file_path)
+        # 列出实际存在的文件
+        try:
+            import glob
+            available = glob.glob(os.path.join(STATIC_ADMIN_DIR, "**", "*"), recursive=True)
+            logger.error(f"[webui] 文件不存在: {file_path}, 可用文件: {available[:10]}")
+        except Exception as e:
+            logger.error(f"[webui] 列出文件失败: {e}")
         return HTMLResponse(content="Not Found", status_code=404)
     
     # 否则返回 index.html（SPA 路由）
@@ -299,3 +320,4 @@ async def webui(request: Request, path: str = ""):
         return FileResponse(index_path)
     
     return HTMLResponse(content="index.html not found", status_code=404)
+

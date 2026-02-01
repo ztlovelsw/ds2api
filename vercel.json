@@ -4,21 +4,9 @@
     {
       "src": "app.py",
       "use": "@vercel/python"
-    },
-    {
-      "src": "static/**",
-      "use": "@vercel/static"
     }
   ],
   "routes": [
-    {
-      "src": "/admin/assets/(.*)",
-      "dest": "/static/admin/assets/$1"
-    },
-    {
-      "src": "/admin/(.+\\.[a-z]+)$",
-      "dest": "/static/admin/$1"
-    },
     {
       "src": "/(.*)",
       "dest": "app.py"
