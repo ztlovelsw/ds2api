@@ -12,6 +12,19 @@ services:
     build: .
     image: ds2api:dev
     container_name: ds2api-dev
+    command: [
+      "uvicorn",
+      "app:app",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "5001",
+      "--reload",
+      "--reload-dir",
+      "/app",
+      "--log-level",
+      "debug"
+    ]
     ports:
       - "${PORT:-5001}:5001"
     env_file:
@@ -26,7 +39,7 @@ services:
       - ./routes:/app/routes:ro
       - ./static:/app/static:ro
       # 配置文件挂载（便于本地修改）
-      - ./config.json:/app/config.json:ro
+      - ./config.json:/app/config.json
     restart: "no"
     stdin_open: true
     tty: true

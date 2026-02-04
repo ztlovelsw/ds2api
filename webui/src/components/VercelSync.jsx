@@ -47,7 +47,7 @@ export default function VercelSync({ onMessage, authFetch }) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    vercel_token: vercelToken,
+                    vercel_token: tokenToUse,
                     project_id: projectId,
                     team_id: teamId || undefined,
                 }),

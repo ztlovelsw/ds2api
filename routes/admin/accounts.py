@@ -36,23 +36,75 @@ async def validate_single_account(account: dict) -> dict:
         "has_token": bool(account.get("token", "").strip()),
         "message": "",
     }
-    
+
+    def _is_token_invalid(status_code: int, data: dict) -> bool:
+        msg = (data.get("msg") or data.get("message") or "").lower()
+        code = data.get("code")
+        return status_code in {401, 403} or code in {40001, 40002, 40003} or "token" in msg or "unauthorized" in msg
+
+    def _create_session(token: str) -> dict:
+        headers = {**BASE_HEADERS, "authorization": f"Bearer {token}"}
+        try:
+            session_resp = cffi_requests.post(
+                DEEPSEEK_CREATE_SESSION_URL,
+                headers=headers,
+                json={"agent": "chat"},
+                impersonate="safari15_3",
+                timeout=15,
+            )
+        except Exception as e:
+            return {"success": False, "message": f"请求异常: {e}", "status_code": 0, "data": {}}
+
+        try:
+            data = session_resp.json()
+        except Exception:
+            data = {}
+        finally:
+            session_resp.close()
+        if session_resp.status_code == 200 and data.get("code") == 0:
+            return {
+                "success": True,
+                "session_id": data.get("data", {}).get("biz_data", {}).get("id"),
+                "status_code": session_resp.status_code,
+                "data": data,
+            }
+        return {
+            "success": False,
+            "message": data.get("msg") or f"HTTP {session_resp.status_code}",
+            "status_code": session_resp.status_code,
+            "data": data,
+        }
+
     try:
-        if result["has_token"]:
-            result["valid"] = True
-            result["message"] = "已有有效 token"
-        else:
+        token = account.get("token", "").strip()
+        if token:
+            session_result = _create_session(token)
+            if session_result["success"]:
+                result["valid"] = True
+                result["message"] = "Token 有效"
+                return result
+
+            if _is_token_invalid(session_result["status_code"], session_result["data"]):
+                token = ""
+                account["token"] = ""
+
+        if not token:
             try:
                 login_deepseek_via_account(account)
-                result["valid"] = True
-                result["has_token"] = True
-                result["message"] = "登录成功"
+                token = account.get("token", "").strip()
+                session_result = _create_session(token)
+                if session_result["success"]:
+                    result["valid"] = True
+                    result["has_token"] = True
+                    result["message"] = "登录成功并验证通过"
+                else:
+                    result["message"] = f"登录成功但验证失败: {session_result['message']}"
             except Exception as e:
                 result["valid"] = False
                 result["message"] = f"登录失败: {str(e)}"
     except Exception as e:
         result["message"] = f"验证出错: {str(e)}"
-    
+
     return result
 
 
@@ -134,37 +186,67 @@ async def test_account_api(account: dict, model: str = "deepseek-chat", message:
     
     start_time = time.time()
     
+    def _is_token_invalid(status_code: int, data: dict) -> bool:
+        msg = (data.get("msg") or data.get("message") or "").lower()
+        code = data.get("code")
+        return status_code in {401, 403} or code in {40001, 40002, 40003} or "token" in msg or "unauthorized" in msg
+
+    def _create_session(token: str) -> dict:
+        headers = {**BASE_HEADERS, "authorization": f"Bearer {token}"}
+        try:
+            session_resp = cffi_requests.post(
+                DEEPSEEK_CREATE_SESSION_URL,
+                headers=headers,
+                json={"agent": "chat"},
+                impersonate="safari15_3",
+                timeout=15,
+            )
+        except Exception as e:
+            return {"success": False, "message": f"请求异常: {e}", "status_code": 0, "data": {}}
+
+        try:
+            session_data = session_resp.json()
+        except Exception:
+            session_data = {}
+        finally:
+            session_resp.close()
+
+        if session_resp.status_code == 200 and session_data.get("code") == 0:
+            return {
+                "success": True,
+                "session_id": session_data.get("data", {}).get("biz_data", {}).get("id"),
+                "status_code": session_resp.status_code,
+                "data": session_data,
+            }
+        return {
+            "success": False,
+            "message": session_data.get("msg") or f"HTTP {session_resp.status_code}",
+            "status_code": session_resp.status_code,
+            "data": session_data,
+        }
+
     try:
         token = account.get("token", "").strip()
-        if not token:
+        session_result = None
+        if token:
+            session_result = _create_session(token)
+
+        if not token or (session_result and not session_result["success"] and _is_token_invalid(session_result["status_code"], session_result["data"])):
             try:
+                account["token"] = ""
                 login_deepseek_via_account(account)
                 token = account.get("token", "")
+                session_result = _create_session(token)
             except Exception as e:
                 result["message"] = f"登录失败: {str(e)}"
                 return result
-        
+
+        if not session_result or not session_result["success"]:
+            result["message"] = f"创建会话失败: {session_result['message'] if session_result else 'Unknown error'}"
+            return result
+
+        session_id = session_result["session_id"]
         headers = {**BASE_HEADERS, "authorization": f"Bearer {token}"}
-        
-        session_resp = cffi_requests.post(
-            DEEPSEEK_CREATE_SESSION_URL,
-            headers=headers,
-            json={"agent": "chat"},
-            impersonate="safari15_3",
-            timeout=15,
-        )
-        
-        if session_resp.status_code != 200:
-            result["message"] = f"创建会话失败: HTTP {session_resp.status_code}"
-            return result
-        
-        session_data = session_resp.json()
-        if session_data.get("code") != 0:
-            result["message"] = f"创建会话失败: {session_data.get('msg', 'Unknown error')}"
-            account["token"] = ""
-            return result
-        
-        session_id = session_data.get("data", {}).get("biz_data", {}).get("id")
         
         if not message.strip():
             result["success"] = True
