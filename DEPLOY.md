@@ -131,8 +131,9 @@ WebUI 开发服务器会启动在 `http://localhost:5173`，并自动代理 API 
 WebUI 构建产物位于 `static/admin/` 目录。
 
 **自动构建（推荐）**：
-- 当 `webui/` 目录下的文件变更并推送到 `main` 分支时，GitHub Actions 会自动构建并提交产物
-- PR 合并时会自动触发构建
+- 当前由 Vercel 在部署时执行 WebUI 构建（见 `vercel.json` 的 `buildCommand`）
+- GitHub Actions 的 WebUI 自动构建流程已关闭
+- `static/admin/` 构建产物不再提交到仓库
 
 **手动构建**：
 ```bash
@@ -145,7 +146,7 @@ npm install
 npm run build
 ```
 
-> **贡献者注意**：修改 WebUI 后无需手动构建，CI 会自动处理。
+> **贡献者注意**：修改 WebUI 后无需手动构建，Vercel 部署会自动构建。
 
 ---
 

@@ -64,6 +64,8 @@ pnpm-lock.yaml
 *.tsbuildinfo
 .cache/
 .parcel-cache/
+static/admin/*
+!static/admin/.gitkeep
 
 # Environment
 .env.local

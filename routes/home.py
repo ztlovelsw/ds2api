@@ -290,14 +290,19 @@ async def webui(request: Request, path: str = ""):
     if path and "." in path:
         file_path = os.path.join(STATIC_ADMIN_DIR, path)
         if os.path.isfile(file_path):
-            return FileResponse(file_path)
+            cache_control = "public, max-age=31536000, immutable"
+            if path.startswith("assets/"):
+                headers = {"Cache-Control": cache_control}
+            else:
+                headers = {"Cache-Control": "no-store, must-revalidate"}
+            return FileResponse(file_path, headers=headers)
         return HTMLResponse(content="Not Found", status_code=404)
     
     # 否则返回 index.html（SPA 路由）
     index_path = os.path.join(STATIC_ADMIN_DIR, "index.html")
     if os.path.isfile(index_path):
-        return FileResponse(index_path)
+        headers = {"Cache-Control": "no-store, must-revalidate"}
+        return FileResponse(index_path, headers=headers)
     
     return HTMLResponse(content="index.html not found", status_code=404)
-
 
