@@ -1,51 +1,51 @@
-# DS2API 接口文档
+# DS2API API Reference
 
-语言 / Language: [中文](API.md) | [English](API.en.md)
+Language: [中文](API.md) | [English](API.en.md)
 
-本文档详细介绍 DS2API 提供的所有 API 端点。
-
----
-
-## 目录
-
-- [基础信息](#基础信息)
-- [OpenAI 兼容接口](#openai-兼容接口)
-  - [获取模型列表](#获取模型列表)
-  - [对话补全](#对话补全)
-- [Claude 兼容接口](#claude-兼容接口)
-  - [Claude 模型列表](#claude-模型列表)
-  - [Claude 消息接口](#claude-消息接口)
-  - [Token 计数](#token-计数)
-- [管理接口](#管理接口)
-  - [登录认证](#登录认证)
-  - [配置管理](#配置管理)
-  - [账号管理](#账号管理)
-  - [Vercel 同步](#vercel-同步)
-- [错误处理](#错误处理)
-- [使用示例](#使用示例)
+This document describes all DS2API API endpoints.
 
 ---
 
-## 基础信息
+## Table of Contents
 
-| 项目 | 说明 |
+- [Basics](#basics)
+- [OpenAI-Compatible API](#openai-compatible-api)
+  - [List Models](#list-models)
+  - [Chat Completions](#chat-completions)
+- [Claude-Compatible API](#claude-compatible-api)
+  - [Claude Model List](#claude-model-list)
+  - [Claude Messages](#claude-messages)
+  - [Token Counting](#token-counting)
+- [Admin API](#admin-api)
+  - [Login](#login)
+  - [Configuration](#configuration)
+  - [Account Management](#account-management)
+  - [Vercel Sync](#vercel-sync)
+- [Error Handling](#error-handling)
+- [Examples](#examples)
+
+---
+
+## Basics
+
+| Item | Description |
 |-----|------|
-| **Base URL** | `https://your-domain.com` 或 `http://localhost:5001` |
-| **OpenAI 认证** | `Authorization: Bearer <api-key>` |
-| **Claude 认证** | `x-api-key: <api-key>` |
-| **响应格式** | JSON |
+| **Base URL** | `https://your-domain.com` or `http://localhost:5001` |
+| **OpenAI auth** | `Authorization: Bearer <api-key>` |
+| **Claude auth** | `x-api-key: <api-key>` |
+| **Response format** | JSON |
 
 ---
 
-## OpenAI 兼容接口
+## OpenAI-Compatible API
 
-### 获取模型列表
+### List Models
 
 ```http
 GET /v1/models
 ```
 
-**响应示例**：
+**Response example**:
 
 ```json
 {
@@ -61,7 +61,7 @@ GET /v1/models
 
 ---
 
-### 对话补全
+### Chat Completions
 
 ```http
 POST /v1/chat/completions
@@ -69,68 +69,68 @@ Authorization: Bearer your-api-key
 Content-Type: application/json
 ```
 
-**请求参数**：
+**Parameters**:
 
-| 参数 | 类型 | 必填 | 说明 |
+| Parameter | Type | Required | Description |
 |-----|------|:----:|------|
-| `model` | string | ✅ | 模型名称（见下表） |
-| `messages` | array | ✅ | 对话消息列表 |
-| `stream` | boolean | ❌ | 是否流式输出，默认 `false` |
-| `temperature` | number | ❌ | 温度参数，范围 0-2 |
-| `max_tokens` | number | ❌ | 最大输出 token 数 |
-| `tools` | array | ❌ | 工具定义列表（Function Calling） |
-| `tool_choice` | string | ❌ | 工具选择策略 |
+| `model` | string | ✅ | Model name (see below) |
+| `messages` | array | ✅ | Chat messages |
+| `stream` | boolean | ❌ | Stream responses (default `false`) |
+| `temperature` | number | ❌ | Temperature (0-2) |
+| `max_tokens` | number | ❌ | Max output tokens |
+| `tools` | array | ❌ | Tool definitions (Function Calling) |
+| `tool_choice` | string | ❌ | Tool selection strategy |
 
-**支持的模型**：
+**Supported models**:
 
-| 模型 | 深度思考 | 联网搜索 | 说明 |
-|-----|:--------:|:--------:|------|
-| `deepseek-chat` | ❌ | ❌ | 标准对话 |
-| `deepseek-reasoner` | ✅ | ❌ | 推理模式，输出思考过程 |
-| `deepseek-chat-search` | ❌ | ✅ | 联网搜索增强 |
-| `deepseek-reasoner-search` | ✅ | ✅ | 推理 + 联网搜索 |
+| Model | Reasoning | Search | Notes |
+|-----|:--------:|:------:|------|
+| `deepseek-chat` | ❌ | ❌ | Standard chat |
+| `deepseek-reasoner` | ✅ | ❌ | Reasoning mode with trace |
+| `deepseek-chat-search` | ❌ | ✅ | Search enhanced |
+| `deepseek-reasoner-search` | ✅ | ✅ | Reasoning + search |
 
-**基础请求示例**：
+**Basic request example**:
 
 ```json
 {
   "model": "deepseek-chat",
   "messages": [
-    {"role": "system", "content": "你是一个有帮助的助手。"},
-    {"role": "user", "content": "你好"}
+    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "Hello"}
   ]
 }
 ```
 
-**流式请求示例**：
+**Streaming request example**:
 
 ```json
 {
   "model": "deepseek-reasoner-search",
   "messages": [
-    {"role": "user", "content": "今天有什么重要新闻？"}
+    {"role": "user", "content": "What's in the news today?"}
   ],
   "stream": true
 }
 ```
 
-**流式响应格式** (`stream: true`)：
+**Streaming response format** (`stream: true`):
 
 ```
 data: {"id":"...","object":"chat.completion.chunk","choices":[{"delta":{"role":"assistant"},"index":0}]}
 
-data: {"id":"...","object":"chat.completion.chunk","choices":[{"delta":{"reasoning_content":"让我思考一下..."},"index":0}]}
+data: {"id":"...","object":"chat.completion.chunk","choices":[{"delta":{"reasoning_content":"Let me think..."},"index":0}]}
 
-data: {"id":"...","object":"chat.completion.chunk","choices":[{"delta":{"content":"根据搜索结果..."},"index":0}]}
+data: {"id":"...","object":"chat.completion.chunk","choices":[{"delta":{"content":"Based on search results..."},"index":0}]}
 
 data: {"id":"...","object":"chat.completion.chunk","choices":[{"index":0,"finish_reason":"stop"}]}
 
 data: [DONE]
 ```
 
-> **注意**：推理模式会输出 `reasoning_content` 字段，包含模型的思考过程。
+> **Note**: Reasoning models emit `reasoning_content` with the trace.
 
-**非流式响应格式** (`stream: false`)：
+**Non-streaming response format** (`stream: false`):
 
 ```json
 {
@@ -142,8 +142,8 @@ data: [DONE]
     "index": 0,
     "message": {
       "role": "assistant",
-      "content": "回复内容",
-      "reasoning_content": "思考过程（仅 reasoner 模型）"
+      "content": "Response text",
+      "reasoning_content": "Reasoning trace (reasoner only)"
     },
     "finish_reason": "stop"
   }],
@@ -158,23 +158,23 @@ data: [DONE]
 }
 ```
 
-#### 工具调用 (Function Calling)
+#### Tool Calling (Function Calling)
 
-**请求示例**：
+**Request example**:
 
 ```json
 {
   "model": "deepseek-chat",
-  "messages": [{"role": "user", "content": "北京今天天气怎么样？"}],
+  "messages": [{"role": "user", "content": "What's the weather in Beijing?"}],
   "tools": [{
     "type": "function",
     "function": {
       "name": "get_weather",
-      "description": "获取指定城市的天气",
+      "description": "Get the weather for a city",
       "parameters": {
         "type": "object",
         "properties": {
-          "location": {"type": "string", "description": "城市名称"}
+          "location": {"type": "string", "description": "City name"}
         },
         "required": ["location"]
       }
@@ -183,7 +183,7 @@ data: [DONE]
 }
 ```
 
-**响应示例**：
+**Response example**:
 
 ```json
 {
@@ -199,7 +199,7 @@ data: [DONE]
         "type": "function",
         "function": {
           "name": "get_weather",
-          "arguments": "{\"location\": \"北京\"}"
+          "arguments": "{\"location\": \"Beijing\"}"
         }
       }]
     },
@@ -210,15 +210,15 @@ data: [DONE]
 
 ---
 
-## Claude 兼容接口
+## Claude-Compatible API
 
-### Claude 模型列表
+### Claude Model List
 
 ```http
 GET /anthropic/v1/models
 ```
 
-**响应示例**：
+**Response example**:
 
 ```json
 {
@@ -231,17 +231,17 @@ GET /anthropic/v1/models
 }
 ```
 
-**模型映射说明**：
+**Model mapping**:
 
-| Claude 模型 | 实际调用 | 说明 |
-|------------|---------|------|
-| `claude-sonnet-4-20250514` | deepseek-chat | 标准模式 |
-| `claude-sonnet-4-20250514-fast` | deepseek-chat | 快速模式 |
-| `claude-sonnet-4-20250514-slow` | deepseek-reasoner | 推理模式（深度思考） |
+| Claude Model | Actual | Notes |
+|------------|--------|------|
+| `claude-sonnet-4-20250514` | deepseek-chat | Standard mode |
+| `claude-sonnet-4-20250514-fast` | deepseek-chat | Fast mode |
+| `claude-sonnet-4-20250514-slow` | deepseek-reasoner | Reasoning mode |
 
 ---
 
-### Claude 消息接口
+### Claude Messages
 
 ```http
 POST /anthropic/v1/messages
@@ -250,30 +250,30 @@ Content-Type: application/json
 anthropic-version: 2023-06-01
 ```
 
-**请求参数**：
+**Parameters**:
 
-| 参数 | 类型 | 必填 | 说明 |
+| Parameter | Type | Required | Description |
 |-----|------|:----:|------|
-| `model` | string | ✅ | 模型名称 |
-| `max_tokens` | integer | ✅ | 最大输出 token |
-| `messages` | array | ✅ | 对话消息 |
-| `stream` | boolean | ❌ | 是否流式，默认 `false` |
-| `system` | string | ❌ | 系统提示词 |
-| `temperature` | number | ❌ | 温度参数 |
+| `model` | string | ✅ | Model name |
+| `max_tokens` | integer | ✅ | Max output tokens |
+| `messages` | array | ✅ | Chat messages |
+| `stream` | boolean | ❌ | Stream responses (default `false`) |
+| `system` | string | ❌ | System prompt |
+| `temperature` | number | ❌ | Temperature |
 
-**请求示例**：
+**Request example**:
 
 ```json
 {
   "model": "claude-sonnet-4-20250514",
   "max_tokens": 1024,
   "messages": [
-    {"role": "user", "content": "你好，请介绍一下你自己"}
+    {"role": "user", "content": "Hello, please introduce yourself."}
   ]
 }
 ```
 
-**非流式响应**：
+**Non-streaming response**:
 
 ```json
 {
@@ -282,7 +282,7 @@ anthropic-version: 2023-06-01
   "role": "assistant",
   "content": [{
     "type": "text",
-    "text": "你好！我是一个 AI 助手..."
+    "text": "Hello! I'm an AI assistant..."
   }],
   "model": "claude-sonnet-4-20250514",
   "stop_reason": "end_turn",
@@ -293,7 +293,7 @@ anthropic-version: 2023-06-01
 }
 ```
 
-**流式响应** (SSE)：
+**Streaming response** (SSE):
 
 ```
 event: message_start
@@ -303,7 +303,7 @@ event: content_block_start
 data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
 
 event: content_block_delta
-data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"你好"}}
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}
 
 event: content_block_stop
 data: {"type":"content_block_stop","index":0}
@@ -317,7 +317,7 @@ data: {"type":"message_stop"}
 
 ---
 
-### Token 计数
+### Token Counting
 
 ```http
 POST /anthropic/v1/messages/count_tokens
@@ -325,18 +325,18 @@ x-api-key: your-api-key
 Content-Type: application/json
 ```
 
-**请求示例**：
+**Request example**:
 
 ```json
 {
   "model": "claude-sonnet-4-20250514",
   "messages": [
-    {"role": "user", "content": "你好"}
+    {"role": "user", "content": "Hello"}
   ]
 }
 ```
 
-**响应示例**：
+**Response example**:
 
 ```json
 {
@@ -346,18 +346,18 @@ Content-Type: application/json
 
 ---
 
-## 管理接口
+## Admin API
 
-所有管理接口（除登录外）需要在请求头携带 JWT Token：`Authorization: Bearer <jwt-token>`
+All admin endpoints (except login) require `Authorization: Bearer <jwt-token>`.
 
-### 登录认证
+### Login
 
 ```http
 POST /admin/login
 Content-Type: application/json
 ```
 
-**请求体**：
+**Request body**:
 
 ```json
 {
@@ -365,7 +365,7 @@ Content-Type: application/json
 }
 ```
 
-**响应**：
+**Response**:
 
 ```json
 {
@@ -375,20 +375,20 @@ Content-Type: application/json
 }
 ```
 
-> Token 有效期默认 24 小时。
+> Tokens are valid for 24 hours by default.
 
 ---
 
-### 配置管理
+### Configuration
 
-#### 获取配置
+#### Get configuration
 
 ```http
 GET /admin/config
 Authorization: Bearer <jwt-token>
 ```
 
-**响应**：
+**Response**:
 
 ```json
 {
@@ -403,7 +403,7 @@ Authorization: Bearer <jwt-token>
 }
 ```
 
-#### 更新配置
+#### Update configuration
 
 ```http
 POST /admin/config
@@ -411,7 +411,7 @@ Authorization: Bearer <jwt-token>
 Content-Type: application/json
 ```
 
-**请求体**：
+**Request body**:
 
 ```json
 {
@@ -422,9 +422,9 @@ Content-Type: application/json
 
 ---
 
-### 账号管理
+### Account Management
 
-#### 添加账号
+#### Add account
 
 ```http
 POST /admin/accounts
@@ -432,7 +432,7 @@ Authorization: Bearer <jwt-token>
 Content-Type: application/json
 ```
 
-**请求体**：
+**Request body**:
 
 ```json
 {
@@ -441,7 +441,7 @@ Content-Type: application/json
 }
 ```
 
-#### 批量导入账号
+#### Batch import accounts
 
 ```http
 POST /admin/accounts/batch
@@ -449,7 +449,7 @@ Authorization: Bearer <jwt-token>
 Content-Type: application/json
 ```
 
-**请求体**：
+**Request body**:
 
 ```json
 {
@@ -460,7 +460,7 @@ Content-Type: application/json
 }
 ```
 
-#### 测试单个账号
+#### Test one account
 
 ```http
 POST /admin/accounts/test
@@ -468,7 +468,7 @@ Authorization: Bearer <jwt-token>
 Content-Type: application/json
 ```
 
-**请求体**：
+**Request body**:
 
 ```json
 {
@@ -476,21 +476,21 @@ Content-Type: application/json
 }
 ```
 
-#### 测试所有账号
+#### Test all accounts
 
 ```http
 POST /admin/accounts/test-all
 Authorization: Bearer <jwt-token>
 ```
 
-#### 获取队列状态
+#### Queue status
 
 ```http
 GET /admin/queue/status
 Authorization: Bearer <jwt-token>
 ```
 
-**响应**：
+**Response**:
 
 ```json
 {
@@ -509,7 +509,7 @@ Authorization: Bearer <jwt-token>
 
 ---
 
-### Vercel 同步
+### Vercel Sync
 
 ```http
 POST /admin/vercel/sync
@@ -517,7 +517,7 @@ Authorization: Bearer <jwt-token>
 Content-Type: application/json
 ```
 
-**请求体**（首次同步需要）：
+**Request body** (first sync only):
 
 ```json
 {
@@ -526,47 +526,47 @@ Content-Type: application/json
 }
 ```
 
-> 首次同步成功后，凭证会被保存，后续同步可不传。
+> After a successful first sync, credentials are stored for future syncs.
 
-**响应**：
+**Response**:
 
 ```json
 {
   "success": true,
-  "message": "配置已同步到 Vercel"
+  "message": "Configuration synced to Vercel"
 }
 ```
 
 ---
 
-## 错误处理
+## Error Handling
 
-所有错误响应遵循以下格式：
+All error responses follow this structure:
 
 ```json
 {
   "error": {
-    "message": "错误描述",
+    "message": "Error description",
     "type": "error_type",
     "code": "error_code"
   }
 }
 ```
 
-**常见错误码**：
+**Common error codes**:
 
-| HTTP 状态码 | 错误类型 | 说明 |
+| HTTP Status | Error Type | Description |
 |:----------:|---------|------|
-| 400 | `invalid_request_error` | 请求参数错误 |
-| 401 | `authentication_error` | API Key 无效或未提供 |
-| 403 | `permission_denied` | 权限不足 |
-| 429 | `rate_limit_error` | 请求过于频繁 |
-| 500 | `internal_error` | 服务器内部错误 |
-| 503 | `service_unavailable` | 无可用账号 |
+| 400 | `invalid_request_error` | Invalid request parameters |
+| 401 | `authentication_error` | Missing or invalid API key |
+| 403 | `permission_denied` | Insufficient permissions |
+| 429 | `rate_limit_error` | Too many requests |
+| 500 | `internal_error` | Internal server error |
+| 503 | `service_unavailable` | No available accounts |
 
 ---
 
-## 使用示例
+## Examples
 
 ### Python (OpenAI SDK)
 
@@ -578,22 +578,22 @@ client = OpenAI(
     base_url="https://your-domain.com/v1"
 )
 
-# 普通对话
+# Basic chat
 response = client.chat.completions.create(
     model="deepseek-chat",
-    messages=[{"role": "user", "content": "你好"}]
+    messages=[{"role": "user", "content": "Hello"}]
 )
 print(response.choices[0].message.content)
 
-# 流式 + 推理模式
+# Streaming + reasoning
 for chunk in client.chat.completions.create(
     model="deepseek-reasoner",
-    messages=[{"role": "user", "content": "解释相对论"}],
+    messages=[{"role": "user", "content": "Explain relativity"}],
     stream=True
 ):
     delta = chunk.choices[0].delta
     if hasattr(delta, 'reasoning_content') and delta.reasoning_content:
-        print(f"[思考] {delta.reasoning_content}", end="")
+        print(f"[Reasoning] {delta.reasoning_content}", end="")
     if delta.content:
         print(delta.content, end="")
 ```
@@ -611,7 +611,7 @@ client = anthropic.Anthropic(
 response = client.messages.create(
     model="claude-sonnet-4-20250514",
     max_tokens=1024,
-    messages=[{"role": "user", "content": "你好"}]
+    messages=[{"role": "user", "content": "Hello"}]
 )
 print(response.content[0].text)
 ```
@@ -619,16 +619,16 @@ print(response.content[0].text)
 ### cURL
 
 ```bash
-# OpenAI 格式
+# OpenAI format
 curl https://your-domain.com/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your-api-key" \
   -d '{
     "model": "deepseek-chat",
-    "messages": [{"role": "user", "content": "你好"}]
+    "messages": [{"role": "user", "content": "Hello"}]
   }'
 
-# Claude 格式
+# Claude format
 curl https://your-domain.com/anthropic/v1/messages \
   -H "Content-Type: application/json" \
   -H "x-api-key: your-api-key" \
@@ -636,14 +636,14 @@ curl https://your-domain.com/anthropic/v1/messages \
   -d '{
     "model": "claude-sonnet-4-20250514",
     "max_tokens": 1024,
-    "messages": [{"role": "user", "content": "你好"}]
+    "messages": [{"role": "user", "content": "Hello"}]
   }'
 ```
 
 ### JavaScript / TypeScript
 
 ```javascript
-// OpenAI 格式 - 流式请求
+// OpenAI format - streaming request
 const response = await fetch('https://your-domain.com/v1/chat/completions', {
   method: 'POST',
   headers: {
@@ -652,7 +652,7 @@ const response = await fetch('https://your-domain.com/v1/chat/completions', {
   },
   body: JSON.stringify({
     model: 'deepseek-chat-search',
-    messages: [{ role: 'user', content: '今天有什么新闻？' }],
+    messages: [{ role: 'user', content: 'What is in the news today?' }],
     stream: true
   })
 });
@@ -690,7 +690,7 @@ const client = new OpenAI({
 
 const stream = await client.chat.completions.create({
   model: 'deepseek-reasoner',
-  messages: [{ role: 'user', content: '解释黑洞' }],
+  messages: [{ role: 'user', content: 'Explain black holes' }],
   stream: true
 });
 

@@ -1,0 +1,231 @@
+{
+    "language": {
+        "label": "语言",
+        "english": "English",
+        "chinese": "中文"
+    },
+    "nav": {
+        "accounts": {
+            "label": "账号管理",
+            "desc": "管理 DeepSeek 账号池"
+        },
+        "test": {
+            "label": "API 测试",
+            "desc": "测试 API 连接与响应"
+        },
+        "import": {
+            "label": "批量导入",
+            "desc": "批量导入账号配置"
+        },
+        "vercel": {
+            "label": "Vercel 同步",
+            "desc": "同步配置到 Vercel"
+        }
+    },
+    "sidebar": {
+        "onlineAdminConsole": "在线管理面板",
+        "systemStatus": "系统状态",
+        "statusOnline": "在线",
+        "accounts": "账号",
+        "keys": "密钥",
+        "signOut": "退出登录"
+    },
+    "auth": {
+        "expired": "认证已过期，请重新登录",
+        "checking": "正在检查登录状态..."
+    },
+    "errors": {
+        "fetchConfig": "获取配置失败: {error}"
+    },
+    "actions": {
+        "cancel": "取消",
+        "add": "添加",
+        "delete": "删除",
+        "copy": "复制",
+        "generate": "生成",
+        "test": "测试",
+        "testing": "正在测试...",
+        "loading": "加载中..."
+    },
+    "messages": {
+        "deleted": "删除成功",
+        "deleteFailed": "删除失败",
+        "failedToAdd": "添加失败",
+        "networkError": "网络错误",
+        "requestFailed": "请求失败",
+        "generationStopped": "已停止生成",
+        "invalidJson": "无效的 JSON 格式",
+        "importFailed": "导入失败",
+        "copyFailed": "复制失败"
+    },
+    "landing": {
+        "adminConsole": "管理面板",
+        "apiStatus": "API 状态",
+        "features": {
+            "compatibility": {
+                "title": "全面兼容",
+                "desc": "适配 OpenAI 与 Claude 格式"
+            },
+            "loadBalancing": {
+                "title": "负载均衡",
+                "desc": "智能轮询，稳定高效"
+            },
+            "reasoning": {
+                "title": "深度思考",
+                "desc": "支持推理过程输出"
+            },
+            "search": {
+                "title": "联网搜索",
+                "desc": "集成原生网页搜索能力"
+            }
+        }
+    },
+    "accountManager": {
+        "addKeySuccess": "API 密钥添加成功",
+        "addAccountSuccess": "账号添加成功",
+        "requiredFields": "需要填写密码以及邮箱或手机号",
+        "deleteKeyConfirm": "确定要删除此 API 密钥吗？",
+        "deleteAccountConfirm": "确定要删除此账号吗？",
+        "testAllConfirm": "测试所有账号的 API 连通性？",
+        "testAllCompleted": "完成：{success}/{total} 可用",
+        "testFailed": "测试失败: {error}",
+        "available": "可用",
+        "inUse": "正在使用",
+        "totalPool": "账号池总数",
+        "accountsUnit": "个账号",
+        "threadsUnit": "线程",
+        "apiKeysTitle": "API 密钥",
+        "apiKeysDesc": "管理 API 访问密钥池",
+        "addKey": "添加密钥",
+        "copied": "已复制",
+        "copyKeyTitle": "复制密钥",
+        "deleteKeyTitle": "删除密钥",
+        "noApiKeys": "未找到 API 密钥",
+        "accountsTitle": "DeepSeek 账号",
+        "accountsDesc": "管理 DeepSeek 账号池",
+        "testAll": "测试全部",
+        "addAccount": "添加账号",
+        "testingAllAccounts": "正在测试所有账号...",
+        "sessionActive": "已建立会话",
+        "reauthRequired": "需重新登录",
+        "noAccounts": "未找到任何账号",
+        "modalAddKeyTitle": "添加 API 密钥",
+        "newKeyLabel": "新密钥值",
+        "newKeyPlaceholder": "输入自定义 API 密钥",
+        "generate": "生成",
+        "generateHint": "点击「生成」自动创建随机密钥",
+        "addKeyLoading": "添加中...",
+        "addKeyAction": "添加密钥",
+        "modalAddAccountTitle": "添加 DeepSeek 账号",
+        "emailOptional": "邮箱 (可选)",
+        "mobileOptional": "手机号 (可选)",
+        "passwordLabel": "密码",
+        "passwordPlaceholder": "账号密码",
+        "addAccountLoading": "添加中...",
+        "addAccountAction": "添加账号"
+    },
+    "apiTester": {
+        "defaultMessage": "你好，请用一句话介绍你自己。",
+        "models": {
+            "chat": "非思考模型",
+            "reasoner": "思考模型",
+            "chatSearch": "非思考模型 (带搜索)",
+            "reasonerSearch": "思考模型 (带搜索)"
+        },
+        "missingApiKey": "请提供 API 密钥",
+        "requestFailed": "请求失败",
+        "networkError": "网络错误: {error}",
+        "testSuccess": "{account}: 测试成功 ({time}ms)",
+        "config": "配置",
+        "modelLabel": "模型",
+        "accountStrategy": "账号策略",
+        "randomRotation": "🎲 随机切换 (支持流式预览)",
+        "apiKeyOptional": "API 密钥 (可选)",
+        "apiKeyDefault": "默认: ...{suffix}",
+        "apiKeyPlaceholder": "输入自定义密钥",
+        "statusError": "错误",
+        "reasoningTrace": "思维链过程",
+        "generating": "正在生成响应...",
+        "enterMessage": "输入消息...",
+        "adminConsoleLabel": "DeepSeek 管理员界面"
+    },
+    "batchImport": {
+        "templates": {
+            "full": {
+                "name": "全量配置模板",
+                "desc": "包含密钥、账号及模型映射"
+            },
+            "emailOnly": {
+                "name": "仅邮箱账号",
+                "desc": "批量导入邮箱格式账号"
+            },
+            "mobileOnly": {
+                "name": "仅手机号账号",
+                "desc": "批量导入手机号格式账号"
+            },
+            "keysOnly": {
+                "name": "仅 API 密钥",
+                "desc": "仅添加 API 访问密钥"
+            }
+        },
+        "enterJson": "请输入 JSON 配置内容",
+        "importSuccess": "导入成功: {keys} 个密钥, {accounts} 个账号",
+        "templateLoaded": "已加载模板: {name}",
+        "currentConfigLoaded": "当前配置已加载",
+        "fetchConfigFailed": "获取配置失败",
+        "copySuccess": "Base64 配置已复制到剪贴板",
+        "quickTemplates": "快速模板",
+        "dataExport": "数据导出",
+        "dataExportDesc": "获取配置的 Base64 字符串，用于 Vercel 环境变量。",
+        "copyBase64": "复制 Base64 配置",
+        "copied": "已复制",
+        "variableName": "变量名",
+        "jsonEditor": "JSON 编辑器",
+        "loadCurrentConfig": "加载当前配置",
+        "applyConfig": "应用配置",
+        "importing": "正在导入...",
+        "importComplete": "导入操作已完成",
+        "importSummary": "成功导入了 {keys} 个 API 密钥，并更新了 {accounts} 个账号。"
+    },
+    "login": {
+        "welcome": "欢迎回来",
+        "subtitle": "请输入管理员密钥以继续",
+        "adminKeyLabel": "管理员密钥",
+        "adminKeyPlaceholder": "输入您的管理员密钥...",
+        "rememberSession": "记住登录状态",
+        "signIn": "登录",
+        "secureConnection": "安全连接",
+        "adminPortal": "DS2API 管理员门户",
+        "signInFailed": "登录失败",
+        "networkError": "网络错误: {error}"
+    },
+    "vercel": {
+        "tokenRequired": "需要 Vercel 访问令牌",
+        "projectRequired": "需要项目 ID",
+        "syncFailed": "同步失败",
+        "networkError": "网络错误",
+        "title": "Vercel 部署",
+        "description": "将当前密钥和账号配置直接同步到 Vercel 环境变量中。",
+        "tokenLabel": "Vercel 访问令牌",
+        "getToken": "获取令牌",
+        "tokenPlaceholderPreconfig": "正在使用预配置的令牌",
+        "tokenPlaceholder": "输入 Vercel 访问令牌",
+        "projectIdLabel": "项目 ID",
+        "projectIdHint": "可在项目设置 (Project Settings) → 常规 (General) 中找到",
+        "teamIdLabel": "团队 ID",
+        "optional": "可选",
+        "syncing": "正在同步...",
+        "syncRedeploy": "同步并重新部署",
+        "redeployHint": "这将触发 Vercel 的重新部署，大约需要 30-60 秒。",
+        "syncSucceeded": "同步成功",
+        "syncFailedLabel": "同步失败",
+        "openDeployment": "访问部署地址",
+        "howItWorks": "工作原理",
+        "steps": {
+            "one": "当前配置 (密钥和账号) 被导出为 JSON 字符串。",
+            "two": "JSON 被编码为 Base64 以确保格式兼容性。",
+            "three": "更新 Vercel 项目中的环境变量：",
+            "four": "触发重新部署以应用新的环境变量。"
+        }
+    }
+}

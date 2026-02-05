@@ -1,6 +1,9 @@
 import React from 'react'
+import { useI18n } from '../i18n'
+import LanguageToggle from './LanguageToggle'
 
 const LandingPage = ({ onEnter }) => {
+    const { t } = useI18n()
     return (
         <div className="landing-container min-h-screen relative overflow-hidden flex flex-col items-center justify-center p-6 text-center">
             {/* Animated Background Elements - using Tailwind with some custom CSS in styles.css if needed, 
@@ -84,6 +87,10 @@ const LandingPage = ({ onEnter }) => {
             <div className="blob" style={{ top: '10%', left: '15%' }} />
             <div className="blob" style={{ bottom: '10%', right: '15%', animationDelay: '-5s' }} />
 
+            <div className="absolute top-6 right-6 z-20">
+                <LanguageToggle />
+            </div>
+
             <div className="landing-content">
                 <header className="mb-12">
                     <h1 className="logo-text">DS2API</h1>
@@ -97,14 +104,14 @@ const LandingPage = ({ onEnter }) => {
                         onClick={onEnter}
                         className="btn-premium text-white px-8 py-3 rounded-xl font-bold transition-all flex items-center gap-2"
                     >
-                        <span>🎛️</span> 管理面板
+                        <span>🎛️</span> {t('landing.adminConsole')}
                     </button>
                     <a
                         href="/v1/models"
                         target="_blank"
                         className="glass-card text-white px-8 py-3 rounded-xl font-semibold transition-all flex items-center gap-2"
                     >
-                        <span>📡</span> API 状态
+                        <span>📡</span> {t('landing.apiStatus')}
                     </a>
                     <a
                         href="https://github.com/CJackHwang/ds2api"
@@ -117,10 +124,10 @@ const LandingPage = ({ onEnter }) => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 text-left">
                     {[
-                        { icon: '🚀', title: '全面兼容', desc: '适配 OpenAI 与 Claude 格式' },
-                        { icon: '⚖️', title: '负载均衡', desc: '智能轮询，稳定高效' },
-                        { icon: '🧠', title: '深度思考', desc: '支持推理过程输出' },
-                        { icon: '🔍', title: '联网搜索', desc: '集成原生网页搜索能力' },
+                        { icon: '🚀', title: t('landing.features.compatibility.title'), desc: t('landing.features.compatibility.desc') },
+                        { icon: '⚖️', title: t('landing.features.loadBalancing.title'), desc: t('landing.features.loadBalancing.desc') },
+                        { icon: '🧠', title: t('landing.features.reasoning.title'), desc: t('landing.features.reasoning.desc') },
+                        { icon: '🔍', title: t('landing.features.search.title'), desc: t('landing.features.search.desc') },
                     ].map((feature, idx) => (
                         <div key={idx} className="glass-card p-6 rounded-2xl">
                             <span className="text-2xl mb-4 block">{feature.icon}</span>

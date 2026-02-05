@@ -6,6 +6,8 @@
 [![Version](https://img.shields.io/badge/version-1.6.11-blue.svg)](version.txt)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](DEPLOY.md#docker-部署推荐)
 
+语言 / Language: [中文](README.MD) | [English](README.en.md)
+
 将 DeepSeek 免费对话版转换为 **OpenAI & Claude 兼容 API**，支持多账号轮询、自动 Token 刷新、可视化管理界面。
 
 ![p1](https://github.com/user-attachments/assets/07296a50-50d4-4f05-a9e5-280df14e9532)
@@ -21,6 +23,7 @@
 - 🚀 **多账号轮询** - Round-Robin 负载均衡，支持高并发场景
 - 🔐 **Token 自动刷新** - 过期自动重新登录，无需手动维护
 - 🌐 **WebUI 管理** - 可视化添加账号、测试 API、同步 Vercel 配置
+- 🌍 **多语言切换** - WebUI 内置中英双语，可随时切换
 - 🔍 **联网搜索** - 支持 DeepSeek 原生搜索增强模式
 - 🧠 **深度思考** - 支持推理模式，输出思考过程
 - 🛠️ **工具调用** - 兼容 OpenAI Function Calling 格式

@@ -1,5 +1,7 @@
 # DS2API 部署指南
 
+语言 / Language: [中文](DEPLOY.md) | [English](DEPLOY.en.md)
+
 本文档详细介绍 DS2API 的各种部署方式。
 
 ---

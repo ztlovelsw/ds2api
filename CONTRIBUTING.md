@@ -1,5 +1,7 @@
 # 贡献指南
 
+语言 / Language: [中文](CONTRIBUTING.md) | [English](CONTRIBUTING.en.md)
+
 感谢你对 DS2API 的贡献！
 
 ## 开发环境设置
@@ -33,6 +35,8 @@ cd webui
 npm install
 npm run dev
 ```
+
+WebUI 语言包位于 `webui/src/locales/`，新增语言请在此处添加对应 JSON 文件。
 
 ## 代码规范
 

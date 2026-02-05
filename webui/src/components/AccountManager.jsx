@@ -11,8 +11,10 @@ import {
     Check
 } from 'lucide-react'
 import clsx from 'clsx'
+import { useI18n } from '../i18n'
 
 export default function AccountManager({ config, onRefresh, onMessage, authFetch }) {
+    const { t } = useI18n()
     const [showAddKey, setShowAddKey] = useState(false)
     const [showAddAccount, setShowAddAccount] = useState(false)
     const [newKey, setNewKey] = useState('')
@@ -54,39 +56,39 @@ export default function AccountManager({ config, onRefresh, onMessage, authFetch
                 body: JSON.stringify({ key: newKey.trim() }),
             })
             if (res.ok) {
-                onMessage('success', 'API 密钥添加成功')
+                onMessage('success', t('accountManager.addKeySuccess'))
                 setNewKey('')
                 setShowAddKey(false)
                 onRefresh()
             } else {
                 const data = await res.json()
-                onMessage('error', data.detail || 'Failed to add')
+                onMessage('error', data.detail || t('messages.failedToAdd'))
             }
         } catch (e) {
-            onMessage('error', '网络错误')
+            onMessage('error', t('messages.networkError'))
         } finally {
             setLoading(false)
         }
     }
 
     const deleteKey = async (key) => {
-        if (!confirm('确定要删除此 API 密钥吗？')) return
+        if (!confirm(t('accountManager.deleteKeyConfirm'))) return
         try {
             const res = await apiFetch(`/admin/keys/${encodeURIComponent(key)}`, { method: 'DELETE' })
             if (res.ok) {
-                onMessage('success', 'Deleted successfully')
+                onMessage('success', t('messages.deleted'))
                 onRefresh()
             } else {
-                onMessage('error', 'Delete failed')
+                onMessage('error', t('messages.deleteFailed'))
             }
         } catch (e) {
-            onMessage('error', 'Network error')
+            onMessage('error', t('messages.networkError'))
         }
     }
 
     const addAccount = async () => {
         if (!newAccount.password || (!newAccount.email && !newAccount.mobile)) {
-            onMessage('error', 'Password and Email/Mobile are required')
+            onMessage('error', t('accountManager.requiredFields'))
             return
         }
         setLoading(true)
@@ -97,33 +99,33 @@ export default function AccountManager({ config, onRefresh, onMessage, authFetch
                 body: JSON.stringify(newAccount),
             })
             if (res.ok) {
-                onMessage('success', '账号添加成功')
+                onMessage('success', t('accountManager.addAccountSuccess'))
                 setNewAccount({ email: '', mobile: '', password: '' })
                 setShowAddAccount(false)
                 onRefresh()
             } else {
                 const data = await res.json()
-                onMessage('error', data.detail || 'Failed to add')
+                onMessage('error', data.detail || t('messages.failedToAdd'))
             }
         } catch (e) {
-            onMessage('error', '网络错误')
+            onMessage('error', t('messages.networkError'))
         } finally {
             setLoading(false)
         }
     }
 
     const deleteAccount = async (id) => {
-        if (!confirm('确定要删除此账号吗？')) return
+        if (!confirm(t('accountManager.deleteAccountConfirm'))) return
         try {
             const res = await apiFetch(`/admin/accounts/${encodeURIComponent(id)}`, { method: 'DELETE' })
             if (res.ok) {
-                onMessage('success', 'Deleted successfully')
+                onMessage('success', t('messages.deleted'))
                 onRefresh()
             } else {
-                onMessage('error', 'Delete failed')
+                onMessage('error', t('messages.deleteFailed'))
             }
         } catch (e) {
-            onMessage('error', 'Network error')
+            onMessage('error', t('messages.networkError'))
         }
     }
 
@@ -136,17 +138,20 @@ export default function AccountManager({ config, onRefresh, onMessage, authFetch
                 body: JSON.stringify({ identifier }),
             })
             const data = await res.json()
-            onMessage(data.success ? 'success' : 'error', `${identifier}: ${data.success ? `Success (${data.response_time}ms)` : data.message}`)
+            const statusMessage = data.success
+                ? t('apiTester.testSuccess', { account: identifier, time: data.response_time })
+                : `${identifier}: ${data.message}`
+            onMessage(data.success ? 'success' : 'error', statusMessage)
             onRefresh()
         } catch (e) {
-            onMessage('error', 'Test failed: ' + e.message)
+            onMessage('error', t('accountManager.testFailed', { error: e.message }))
         } finally {
             setTesting(prev => ({ ...prev, [identifier]: false }))
         }
     }
 
     const testAllAccounts = async () => {
-        if (!confirm('测试所有账号的 API 连通性？')) return
+        if (!confirm(t('accountManager.testAllConfirm'))) return
         const accounts = config.accounts || []
         if (accounts.length === 0) return
 
@@ -176,7 +181,7 @@ export default function AccountManager({ config, onRefresh, onMessage, authFetch
             setBatchProgress({ current: i + 1, total: accounts.length, results: [...results] })
         }
 
-        onMessage('success', `Completed: ${successCount}/${accounts.length} available`)
+        onMessage('success', t('accountManager.testAllCompleted', { success: successCount, total: accounts.length }))
         onRefresh()
         setTestingAll(false)
     }
@@ -191,30 +196,30 @@ export default function AccountManager({ config, onRefresh, onMessage, authFetch
                             <div className="absolute right-0 top-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                                 <CheckCircle2 className="w-16 h-16" />
                             </div>
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest">可用</p>
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest">{t('accountManager.available')}</p>
                             <div className="mt-2 flex items-baseline gap-2">
                                 <span className="text-3xl font-bold text-foreground">{queueStatus.available}</span>
-                                <span className="text-xs text-muted-foreground">个账号</span>
+                                <span className="text-xs text-muted-foreground">{t('accountManager.accountsUnit')}</span>
                             </div>
                         </div>
                         <div className="bg-card border border-border rounded-xl p-4 flex flex-col justify-between shadow-sm relative overflow-hidden group">
                             <div className="absolute right-0 top-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                                 <Server className="w-16 h-16" />
                             </div>
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest">正在使用</p>
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest">{t('accountManager.inUse')}</p>
                             <div className="mt-2 flex items-baseline gap-2">
                                 <span className="text-3xl font-bold text-foreground">{queueStatus.in_use}</span>
-                                <span className="text-xs text-muted-foreground">线程</span>
+                                <span className="text-xs text-muted-foreground">{t('accountManager.threadsUnit')}</span>
                             </div>
                         </div>
                         <div className="bg-card border border-border rounded-xl p-4 flex flex-col justify-between shadow-sm relative overflow-hidden group">
                             <div className="absolute right-0 top-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
                                 <ShieldCheck className="w-16 h-16" />
                             </div>
-                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest">账号池总数</p>
+                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest">{t('accountManager.totalPool')}</p>
                             <div className="mt-2 flex items-baseline gap-2">
                                 <span className="text-3xl font-bold text-foreground">{queueStatus.total}</span>
-                                <span className="text-xs text-muted-foreground">个账号</span>
+                                <span className="text-xs text-muted-foreground">{t('accountManager.accountsUnit')}</span>
                             </div>
                         </div>
                     </div>
@@ -225,15 +230,15 @@ export default function AccountManager({ config, onRefresh, onMessage, authFetch
             <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
                 <div className="p-6 border-b border-border flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
-                        <h2 className="text-lg font-semibold">API 密钥</h2>
-                        <p className="text-sm text-muted-foreground">管理 API 访问密钥池</p>
+                        <h2 className="text-lg font-semibold">{t('accountManager.apiKeysTitle')}</h2>
+                        <p className="text-sm text-muted-foreground">{t('accountManager.apiKeysDesc')}</p>
                     </div>
                     <button
                         onClick={() => setShowAddKey(true)}
                         className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium text-sm shadow-sm"
                     >
                         <Plus className="w-4 h-4" />
-                        添加密钥
+                        {t('accountManager.addKey')}
                     </button>
                 </div>
 
@@ -246,7 +251,7 @@ export default function AccountManager({ config, onRefresh, onMessage, authFetch
                                         {key.slice(0, 16)}****
                                     </div>
                                     {copiedKey === key && (
-                                        <span className="text-xs text-green-500 animate-pulse">已复制</span>
+                                        <span className="text-xs text-green-500 animate-pulse">{t('accountManager.copied')}</span>
                                     )}
                                 </div>
                                 <div className="flex items-center gap-1">
@@ -257,14 +262,14 @@ export default function AccountManager({ config, onRefresh, onMessage, authFetch
                                             setTimeout(() => setCopiedKey(null), 2000)
                                         }}
                                         className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md transition-colors opacity-0 group-hover:opacity-100"
-                                        title="复制密钥"
+                                        title={t('accountManager.copyKeyTitle')}
                                     >
                                         {copiedKey === key ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
                                     </button>
                                     <button
                                         onClick={() => deleteKey(key)}
                                         className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors opacity-0 group-hover:opacity-100"
-                                        title="删除密钥"
+                                        title={t('accountManager.deleteKeyTitle')}
                                     >
                                         <Trash2 className="w-4 h-4" />
                                     </button>
@@ -272,7 +277,7 @@ export default function AccountManager({ config, onRefresh, onMessage, authFetch
                             </div>
                         ))
                     ) : (
-                        <div className="p-8 text-center text-muted-foreground">未找到 API 密钥</div>
+                        <div className="p-8 text-center text-muted-foreground">{t('accountManager.noApiKeys')}</div>
                     )}
                 </div>
             </div>
@@ -281,8 +286,8 @@ export default function AccountManager({ config, onRefresh, onMessage, authFetch
             <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
                 <div className="p-6 border-b border-border flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
-                        <h2 className="text-lg font-semibold">DeepSeek 账号</h2>
-                        <p className="text-sm text-muted-foreground">管理 DeepSeek 账号池</p>
+                        <h2 className="text-lg font-semibold">{t('accountManager.accountsTitle')}</h2>
+                        <p className="text-sm text-muted-foreground">{t('accountManager.accountsDesc')}</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                         <button
@@ -291,14 +296,14 @@ export default function AccountManager({ config, onRefresh, onMessage, authFetch
                             className="flex items-center px-3 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors text-xs font-medium border border-border disabled:opacity-50"
                         >
                             {testingAll ? <span className="animate-spin mr-2">⟳</span> : <Play className="w-3 h-3 mr-2" />}
-                            测试全部
+                            {t('accountManager.testAll')}
                         </button>
                         <button
                             onClick={() => setShowAddAccount(true)}
                             className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium text-sm shadow-sm"
                         >
                             <Plus className="w-4 h-4" />
-                            添加账号
+                            {t('accountManager.addAccount')}
                         </button>
                     </div>
                 </div>
@@ -307,7 +312,7 @@ export default function AccountManager({ config, onRefresh, onMessage, authFetch
                 {testingAll && batchProgress.total > 0 && (
                     <div className="p-4 border-b border-border bg-muted/30">
                         <div className="flex items-center justify-between text-sm mb-2">
-                            <span className="font-medium">正在测试所有账号...</span>
+                            <span className="font-medium">{t('accountManager.testingAllAccounts')}</span>
                             <span className="text-muted-foreground">{batchProgress.current} / {batchProgress.total}</span>
                         </div>
                         <div className="w-full bg-muted rounded-full h-2 overflow-hidden mb-4">
@@ -345,7 +350,7 @@ export default function AccountManager({ config, onRefresh, onMessage, authFetch
                                         <div className="min-w-0">
                                             <div className="font-medium truncate">{id}</div>
                                             <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                                                <span>{acc.has_token ? '已建立会话' : '需重新登录'}</span>
+                                                <span>{acc.has_token ? t('accountManager.sessionActive') : t('accountManager.reauthRequired')}</span>
                                                 {acc.token_preview && (
                                                     <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-[10px]">
                                                         {acc.token_preview}
@@ -360,7 +365,7 @@ export default function AccountManager({ config, onRefresh, onMessage, authFetch
                                             disabled={testing[id]}
                                             className="px-2 lg:px-3 py-1 lg:py-1.5 text-[10px] lg:text-xs font-medium border border-border rounded-md hover:bg-secondary transition-colors disabled:opacity-50"
                                         >
-                                            {testing[id] ? '正在测试...' : '测试'}
+                                            {testing[id] ? t('actions.testing') : t('actions.test')}
                                         </button>
                                         <button
                                             onClick={() => deleteAccount(id)}
@@ -373,7 +378,7 @@ export default function AccountManager({ config, onRefresh, onMessage, authFetch
                             )
                         })
                     ) : (
-                        <div className="p-8 text-center text-muted-foreground">未找到任何账号</div>
+                        <div className="p-8 text-center text-muted-foreground">{t('accountManager.noAccounts')}</div>
                     )}
                 </div>
             </div>
@@ -384,19 +389,19 @@ export default function AccountManager({ config, onRefresh, onMessage, authFetch
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
                         <div className="bg-card w-full max-w-md rounded-xl border border-border shadow-2xl overflow-hidden animate-in zoom-in-95">
                             <div className="p-4 border-b border-border flex justify-between items-center">
-                                <h3 className="font-semibold">添加 API 密钥</h3>
+                                <h3 className="font-semibold">{t('accountManager.modalAddKeyTitle')}</h3>
                                 <button onClick={() => setShowAddKey(false)} className="text-muted-foreground hover:text-foreground">
                                     <X className="w-5 h-5" />
                                 </button>
                             </div>
                             <div className="p-6 space-y-4">
                                 <div>
-                                    <label className="block text-sm font-medium mb-1.5">新密钥值</label>
+                                    <label className="block text-sm font-medium mb-1.5">{t('accountManager.newKeyLabel')}</label>
                                     <div className="flex gap-2">
                                         <input
                                             type="text"
                                             className="input-field bg-[#09090b] flex-1"
-                                            placeholder="输入自定义 API 密钥"
+                                            placeholder={t('accountManager.newKeyPlaceholder')}
                                             value={newKey}
                                             onChange={e => setNewKey(e.target.value)}
                                             autoFocus
@@ -406,15 +411,15 @@ export default function AccountManager({ config, onRefresh, onMessage, authFetch
                                             onClick={() => setNewKey('sk-' + crypto.randomUUID().replace(/-/g, ''))}
                                             className="px-3 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors text-sm font-medium border border-border whitespace-nowrap"
                                         >
-                                            生成
+                                            {t('accountManager.generate')}
                                         </button>
                                     </div>
-                                    <p className="text-xs text-muted-foreground mt-1.5">点击「生成」自动创建随机密钥</p>
+                                    <p className="text-xs text-muted-foreground mt-1.5">{t('accountManager.generateHint')}</p>
                                 </div>
                                 <div className="flex justify-end gap-2 pt-2">
-                                    <button onClick={() => setShowAddKey(false)} className="px-4 py-2 rounded-lg border border-border hover:bg-secondary transition-colors text-sm font-medium">取消</button>
+                                    <button onClick={() => setShowAddKey(false)} className="px-4 py-2 rounded-lg border border-border hover:bg-secondary transition-colors text-sm font-medium">{t('actions.cancel')}</button>
                                     <button onClick={addKey} disabled={loading} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium disabled:opacity-50">
-                                        {loading ? '添加中...' : '添加密钥'}
+                                        {loading ? t('accountManager.addKeyLoading') : t('accountManager.addKeyAction')}
                                     </button>
                                 </div>
                             </div>
@@ -428,14 +433,14 @@ export default function AccountManager({ config, onRefresh, onMessage, authFetch
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
                         <div className="bg-card w-full max-w-md rounded-xl border border-border shadow-2xl overflow-hidden animate-in zoom-in-95">
                             <div className="p-4 border-b border-border flex justify-between items-center">
-                                <h3 className="font-semibold">添加 DeepSeek 账号</h3>
+                                <h3 className="font-semibold">{t('accountManager.modalAddAccountTitle')}</h3>
                                 <button onClick={() => setShowAddAccount(false)} className="text-muted-foreground hover:text-foreground">
                                     <X className="w-5 h-5" />
                                 </button>
                             </div>
                             <div className="p-6 space-y-4">
                                 <div>
-                                    <label className="block text-sm font-medium mb-1.5">邮箱 (可选)</label>
+                                    <label className="block text-sm font-medium mb-1.5">{t('accountManager.emailOptional')}</label>
                                     <input
                                         type="email"
                                         className="input-field"
@@ -445,7 +450,7 @@ export default function AccountManager({ config, onRefresh, onMessage, authFetch
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-1.5">手机号 (可选)</label>
+                                    <label className="block text-sm font-medium mb-1.5">{t('accountManager.mobileOptional')}</label>
                                     <input
                                         type="text"
                                         className="input-field"
@@ -455,19 +460,19 @@ export default function AccountManager({ config, onRefresh, onMessage, authFetch
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-1.5">密码 <span className="text-destructive">*</span></label>
+                                    <label className="block text-sm font-medium mb-1.5">{t('accountManager.passwordLabel')} <span className="text-destructive">*</span></label>
                                     <input
                                         type="password"
                                         className="input-field bg-[#09090b]"
-                                        placeholder="账号密码"
+                                        placeholder={t('accountManager.passwordPlaceholder')}
                                         value={newAccount.password}
                                         onChange={e => setNewAccount({ ...newAccount, password: e.target.value })}
                                     />
                                 </div>
                                 <div className="flex justify-end gap-2 pt-2">
-                                    <button onClick={() => setShowAddAccount(false)} className="px-4 py-2 rounded-lg border border-border hover:bg-secondary transition-colors text-sm font-medium">取消</button>
+                                    <button onClick={() => setShowAddAccount(false)} className="px-4 py-2 rounded-lg border border-border hover:bg-secondary transition-colors text-sm font-medium">{t('actions.cancel')}</button>
                                     <button onClick={addAccount} disabled={loading} className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium disabled:opacity-50">
-                                        {loading ? '添加中...' : '添加账号'}
+                                        {loading ? t('accountManager.addAccountLoading') : t('accountManager.addAccountAction')}
                                     </button>
                                 </div>
                             </div>

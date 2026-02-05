@@ -25,18 +25,21 @@ import BatchImport from './components/BatchImport'
 import VercelSync from './components/VercelSync'
 import Login from './components/Login'
 import LandingPage from './components/LandingPage'
-
-const NAV_ITEMS = [
-    { id: 'accounts', label: '账号管理', icon: Users, description: '管理 DeepSeek 账号池' },
-    { id: 'test', label: 'API 测试', icon: Server, description: '测试 API 连接与响应' },
-    { id: 'import', label: '批量导入', icon: Upload, description: '批量导入账号配置' },
-    { id: 'vercel', label: 'Vercel 同步', icon: Cloud, description: '同步配置到 Vercel' },
-]
+import LanguageToggle from './components/LanguageToggle'
+import { useI18n } from './i18n'
 
 function Dashboard({ token, onLogout, config, fetchConfig, showMessage, message }) {
+    const { t } = useI18n()
     const [activeTab, setActiveTab] = useState('accounts')
     const [sidebarOpen, setSidebarOpen] = useState(false)
     const [loading, setLoading] = useState(false)
+
+    const navItems = [
+        { id: 'accounts', label: t('nav.accounts.label'), icon: Users, description: t('nav.accounts.desc') },
+        { id: 'test', label: t('nav.test.label'), icon: Server, description: t('nav.test.desc') },
+        { id: 'import', label: t('nav.import.label'), icon: Upload, description: t('nav.import.desc') },
+        { id: 'vercel', label: t('nav.vercel.label'), icon: Cloud, description: t('nav.vercel.desc') },
+    ]
 
     const authFetch = async (url, options = {}) => {
         const headers = {
@@ -47,7 +50,7 @@ function Dashboard({ token, onLogout, config, fetchConfig, showMessage, message 
 
         if (res.status === 401) {
             onLogout()
-            throw new Error('认证已过期，请重新登录')
+            throw new Error(t('auth.expired'))
         }
         return res
     }
@@ -87,11 +90,14 @@ function Dashboard({ token, onLogout, config, fetchConfig, showMessage, message 
                         </div>
                         <span>DS2API</span>
                     </div>
-                    <p className="text-[10px] text-muted-foreground mt-2 font-semibold tracking-[0.1em] uppercase opacity-60 px-1">在线管理面板</p>
+                    <div className="flex items-center justify-between mt-2">
+                        <p className="text-[10px] text-muted-foreground font-semibold tracking-[0.1em] uppercase opacity-60 px-1">{t('sidebar.onlineAdminConsole')}</p>
+                        <LanguageToggle />
+                    </div>
                 </div>
 
                 <nav className="flex-1 px-3 space-y-1 overflow-y-auto pt-2">
-                    {NAV_ITEMS.map((item) => {
+                    {navItems.map((item) => {
                         const Icon = item.icon
                         const isActive = activeTab === item.id
                         return (
@@ -119,19 +125,19 @@ function Dashboard({ token, onLogout, config, fetchConfig, showMessage, message 
                 <div className="p-4 border-t border-border bg-card">
                     <div className="space-y-4">
                         <div className="flex items-center justify-between text-sm px-1">
-                            <span className="text-muted-foreground font-semibold text-[10px] uppercase tracking-wider">系统状态</span>
+                            <span className="text-muted-foreground font-semibold text-[10px] uppercase tracking-wider">{t('sidebar.systemStatus')}</span>
                             <span className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                                在线
+                                {t('sidebar.statusOnline')}
                             </span>
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                             <div className="bg-background rounded-lg p-3 border border-border shadow-sm">
-                                <div className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider mb-0.5 opacity-70">账号</div>
+                                <div className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider mb-0.5 opacity-70">{t('sidebar.accounts')}</div>
                                 <div className="text-lg font-bold text-foreground leading-tight">{config.accounts?.length || 0}</div>
                             </div>
                             <div className="bg-background rounded-lg p-3 border border-border shadow-sm">
-                                <div className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider mb-0.5 opacity-70">密钥</div>
+                                <div className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider mb-0.5 opacity-70">{t('sidebar.keys')}</div>
                                 <div className="text-lg font-bold text-foreground">{config.keys?.length || 0}</div>
                             </div>
                         </div>
@@ -140,7 +146,7 @@ function Dashboard({ token, onLogout, config, fetchConfig, showMessage, message 
                             className="w-full h-10 flex items-center justify-center gap-2 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive hover:border-destructive/20 transition-all"
                         >
                             <LogOut className="w-3.5 h-3.5" />
-                            退出登录
+                            {t('sidebar.signOut')}
                         </button>
                     </div>
                 </div>
@@ -154,22 +160,25 @@ function Dashboard({ token, onLogout, config, fetchConfig, showMessage, message 
                         </div>
                         <span className="font-semibold text-sm">DS2API</span>
                     </div>
-                    <button
-                        onClick={() => setSidebarOpen(true)}
-                        className="p-2 -mr-2 text-muted-foreground hover:text-foreground"
-                    >
-                        <Menu className="w-5 h-5" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <LanguageToggle />
+                        <button
+                            onClick={() => setSidebarOpen(true)}
+                            className="p-2 -mr-2 text-muted-foreground hover:text-foreground"
+                        >
+                            <Menu className="w-5 h-5" />
+                        </button>
+                    </div>
                 </header>
 
                 <div className="flex-1 overflow-auto bg-background p-4 lg:p-10">
                     <div className="max-w-6xl mx-auto space-y-4 lg:space-y-6">
                         <div className="hidden lg:block mb-8">
                             <h1 className="text-3xl font-bold tracking-tight mb-2">
-                                {NAV_ITEMS.find(n => n.id === activeTab)?.label}
+                                {navItems.find(n => n.id === activeTab)?.label}
                             </h1>
                             <p className="text-muted-foreground">
-                                {NAV_ITEMS.find(n => n.id === activeTab)?.description}
+                                {navItems.find(n => n.id === activeTab)?.description}
                             </p>
                         </div>
 
@@ -195,6 +204,7 @@ function Dashboard({ token, onLogout, config, fetchConfig, showMessage, message 
 }
 
 export default function App() {
+    const { t } = useI18n()
     const navigate = useNavigate()
     const location = useLocation()
     const [config, setConfig] = useState({ keys: [], accounts: [] })
@@ -207,7 +217,7 @@ export default function App() {
     const isAdminRoute = location.pathname.startsWith('/admin') || isProduction
 
     useEffect(() => {
-        // 只在 admin 路由时检查登录状态
+        // Only check auth status on admin routes.
         if (!isAdminRoute) {
             setAuthChecking(false)
             return
@@ -248,8 +258,8 @@ export default function App() {
                 setConfig(data)
             }
         } catch (e) {
-            console.error('获取配置失败:', e)
-            showMessage('error', e.message)
+            console.error('Failed to fetch config:', e)
+            showMessage('error', t('errors.fetchConfig', { error: e.message }))
         } finally {
             setLoading(false)
         }
@@ -278,13 +288,13 @@ export default function App() {
         sessionStorage.removeItem('ds2api_token_expires')
     }
 
-    // 在 admin 路由时，等待认证检查完成
+    // Wait for auth checks on admin routes.
     if (isAdminRoute && authChecking) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-background">
                 <div className="flex flex-col items-center gap-4">
                     <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-                    <p className="text-muted-foreground animate-pulse">正在检查登录状态...</p>
+                    <p className="text-muted-foreground animate-pulse">{t('auth.checking')}</p>
                 </div>
             </div>
         )

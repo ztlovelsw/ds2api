@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Cloud, ArrowRight, ExternalLink, Info, CheckCircle2, XCircle } from 'lucide-react'
+import { useI18n } from '../i18n'
 
 export default function VercelSync({ onMessage, authFetch }) {
+    const { t } = useI18n()
     const [vercelToken, setVercelToken] = useState('')
     const [projectId, setProjectId] = useState('')
     const [teamId, setTeamId] = useState('')
@@ -32,11 +34,11 @@ export default function VercelSync({ onMessage, authFetch }) {
         const tokenToUse = preconfig?.has_token && !vercelToken ? '__USE_PRECONFIG__' : vercelToken
 
         if (!tokenToUse && !preconfig?.has_token) {
-            onMessage('error', '需要 Vercel 访问令牌')
+            onMessage('error', t('vercel.tokenRequired'))
             return
         }
         if (!projectId) {
-            onMessage('error', '需要项目 ID')
+            onMessage('error', t('vercel.projectRequired'))
             return
         }
 
@@ -58,10 +60,10 @@ export default function VercelSync({ onMessage, authFetch }) {
                 onMessage('success', data.message)
             } else {
                 setResult({ ...data, success: false })
-                onMessage('error', data.detail || '同步失败')
+                onMessage('error', data.detail || t('vercel.syncFailed'))
             }
         } catch (e) {
-            onMessage('error', '网络错误')
+            onMessage('error', t('vercel.networkError'))
         } finally {
             setLoading(false)
         }
@@ -74,26 +76,26 @@ export default function VercelSync({ onMessage, authFetch }) {
                 <div className="border-b border-border pb-6">
                     <h2 className="text-xl font-semibold flex items-center gap-2">
                         <Cloud className="w-6 h-6 text-primary" />
-                        Vercel 部署
+                        {t('vercel.title')}
                     </h2>
                     <p className="text-muted-foreground text-sm mt-1">
-                        将当前密钥和账号配置直接同步到 Vercel 环境变量中。
+                        {t('vercel.description')}
                     </p>
                 </div>
 
                 <div className="space-y-4">
                     <div className="space-y-2">
                         <label className="text-sm font-medium flex items-center justify-between">
-                            Vercel 访问令牌
+                            {t('vercel.tokenLabel')}
                             <a href="https://vercel.com/account/tokens" target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline flex items-center gap-1">
-                                获取令牌 <ExternalLink className="w-3 h-3" />
+                                {t('vercel.getToken')} <ExternalLink className="w-3 h-3" />
                             </a>
                         </label>
                         <div className="relative">
                             <input
                                 type="password"
                                 className="w-full h-10 px-3 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring transition-all pr-10"
-                                placeholder={preconfig?.has_token ? "正在使用预配置的令牌" : "输入 Vercel 访问令牌"}
+                                placeholder={preconfig?.has_token ? t('vercel.tokenPlaceholderPreconfig') : t('vercel.tokenPlaceholder')}
                                 value={vercelToken}
                                 onChange={e => setVercelToken(e.target.value)}
                             />
@@ -106,7 +108,7 @@ export default function VercelSync({ onMessage, authFetch }) {
                     </div>
 
                     <div className="space-y-2">
-                        <label className="text-sm font-medium">项目 ID</label>
+                        <label className="text-sm font-medium">{t('vercel.projectIdLabel')}</label>
                         <input
                             type="text"
                             className="w-full h-10 px-3 bg-background border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring transition-all"
@@ -114,12 +116,12 @@ export default function VercelSync({ onMessage, authFetch }) {
                             value={projectId}
                             onChange={e => setProjectId(e.target.value)}
                         />
-                        <p className="text-xs text-muted-foreground">可在项目设置 (Project Settings) → 常规 (General) 中找到</p>
+                        <p className="text-xs text-muted-foreground">{t('vercel.projectIdHint')}</p>
                     </div>
 
                     <div className="space-y-2">
                         <label className="text-sm font-medium flex items-center gap-2">
-                            团队 ID <span className="text-xs text-muted-foreground font-normal">(可选)</span>
+                            {t('vercel.teamIdLabel')} <span className="text-xs text-muted-foreground font-normal">({t('vercel.optional')})</span>
                         </label>
                         <input
                             type="text"
@@ -140,16 +142,16 @@ export default function VercelSync({ onMessage, authFetch }) {
                         {loading ? (
                             <span className="flex items-center gap-2">
                                 <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                                正在同步...
+                                {t('vercel.syncing')}
                             </span>
                         ) : (
                             <span className="flex items-center gap-2">
-                                同步并重新部署 <ArrowRight className="w-4 h-4" />
+                                {t('vercel.syncRedeploy')} <ArrowRight className="w-4 h-4" />
                             </span>
                         )}
                     </button>
                     <p className="text-xs text-center text-muted-foreground mt-4">
-                        这将触发 Vercel 的重新部署，大约需要 30-60 秒。
+                        {t('vercel.redeployHint')}
                     </p>
                 </div>
             </div>
@@ -170,14 +172,14 @@ export default function VercelSync({ onMessage, authFetch }) {
                             )}
                             <div className="space-y-1">
                                 <h3 className={`font-semibold text-lg ${result.success ? 'text-emerald-500' : 'text-destructive'}`}>
-                                    {result.success ? '同步成功' : '同步失败'}
+                                    {result.success ? t('vercel.syncSucceeded') : t('vercel.syncFailedLabel')}
                                 </h3>
                                 <p className="text-sm opacity-90">{result.message}</p>
 
                                 {result.deployment_url && (
                                     <div className="pt-3 mt-3 border-t border-emerald-500/20">
                                         <a href={`https://${result.deployment_url}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-sm font-medium hover:underline">
-                                            访问部署地址 <ExternalLink className="w-3 h-3" />
+                                            {t('vercel.openDeployment')} <ExternalLink className="w-3 h-3" />
                                         </a>
                                     </div>
                                 )}
@@ -189,24 +191,26 @@ export default function VercelSync({ onMessage, authFetch }) {
                 <div className="bg-secondary/20 border border-border rounded-xl p-6">
                     <h3 className="font-semibold flex items-center gap-2 mb-4">
                         <Info className="w-5 h-5 text-primary" />
-                        工作原理
+                        {t('vercel.howItWorks')}
                     </h3>
                     <ul className="space-y-4">
                         <li className="flex gap-3">
                             <span className="shrink-0 w-6 h-6 rounded-full bg-background border border-border flex items-center justify-center text-xs font-bold text-muted-foreground">1</span>
-                            <p className="text-sm text-muted-foreground">当前配置 (密钥和账号) 被导出为 JSON 字符串。</p>
+                            <p className="text-sm text-muted-foreground">{t('vercel.steps.one')}</p>
                         </li>
                         <li className="flex gap-3">
                             <span className="shrink-0 w-6 h-6 rounded-full bg-background border border-border flex items-center justify-center text-xs font-bold text-muted-foreground">2</span>
-                            <p className="text-sm text-muted-foreground">JSON 被编码为 Base64 以确保格式兼容性。</p>
+                            <p className="text-sm text-muted-foreground">{t('vercel.steps.two')}</p>
                         </li>
                         <li className="flex gap-3">
                             <span className="shrink-0 w-6 h-6 rounded-full bg-background border border-border flex items-center justify-center text-xs font-bold text-muted-foreground">3</span>
-                            <p className="text-sm text-muted-foreground">更新 Vercel 项目中的 <code className="bg-background px-1 py-0.5 rounded border border-border text-xs">DS2API_CONFIG_JSON</code> 环境变量。</p>
+                            <p className="text-sm text-muted-foreground">
+                                {t('vercel.steps.three')} <code className="bg-background px-1 py-0.5 rounded border border-border text-xs">DS2API_CONFIG_JSON</code>
+                            </p>
                         </li>
                         <li className="flex gap-3">
                             <span className="shrink-0 w-6 h-6 rounded-full bg-background border border-border flex items-center justify-center text-xs font-bold text-muted-foreground">4</span>
-                            <p className="text-sm text-muted-foreground">触发重新部署以应用新的环境变量。</p>
+                            <p className="text-sm text-muted-foreground">{t('vercel.steps.four')}</p>
                         </li>
                     </ul>
                 </div>

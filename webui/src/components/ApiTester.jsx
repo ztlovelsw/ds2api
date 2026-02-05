@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
     Send,
     Square,
@@ -17,17 +17,13 @@ import {
     Zap
 } from 'lucide-react'
 import clsx from 'clsx'
-
-const MODELS = [
-    { id: "deepseek-chat", name: "deepseek-chat", icon: MessageSquare, desc: "非思考模型", color: "text-amber-500" },
-    { id: "deepseek-reasoner", name: "deepseek-reasoner", icon: Cpu, desc: "思考模型", color: "text-amber-600" },
-    { id: "deepseek-chat-search", name: "deepseek-chat-search", icon: SearchIcon, desc: "非思考模型 (带搜索)", color: "text-cyan-500" },
-    { id: "deepseek-reasoner-search", name: "deepseek-reasoner-search", icon: SearchIcon, desc: "思考模型 (带搜索)", color: "text-cyan-600" },
-];
+import { useI18n } from '../i18n'
 
 export default function ApiTester({ config, onMessage, authFetch }) {
+    const { t } = useI18n()
     const [model, setModel] = useState('deepseek-chat')
-    const [message, setMessage] = useState('Hello, please introduce yourself in one sentence.')
+    const defaultMessage = t('apiTester.defaultMessage')
+    const [message, setMessage] = useState(defaultMessage)
     const [apiKey, setApiKey] = useState('')
     const [selectedAccount, setSelectedAccount] = useState('')
     const [response, setResponse] = useState(null)
@@ -36,12 +32,19 @@ export default function ApiTester({ config, onMessage, authFetch }) {
     const [streamingThinking, setStreamingThinking] = useState('')
     const [isStreaming, setIsStreaming] = useState(false)
     const abortControllerRef = useRef(null)
+    const defaultMessageRef = useRef(defaultMessage)
 
     const [sidebarOpen, setSidebarOpen] = useState(false)
     const [configExpanded, setConfigExpanded] = useState(false)
 
     const apiFetch = authFetch || fetch
     const accounts = config.accounts || []
+    const models = [
+        { id: "deepseek-chat", name: "deepseek-chat", icon: MessageSquare, desc: t('apiTester.models.chat'), color: "text-amber-500" },
+        { id: "deepseek-reasoner", name: "deepseek-reasoner", icon: Cpu, desc: t('apiTester.models.reasoner'), color: "text-amber-600" },
+        { id: "deepseek-chat-search", name: "deepseek-chat-search", icon: SearchIcon, desc: t('apiTester.models.chatSearch'), color: "text-cyan-500" },
+        { id: "deepseek-reasoner-search", name: "deepseek-reasoner-search", icon: SearchIcon, desc: t('apiTester.models.reasonerSearch'), color: "text-cyan-600" },
+    ]
 
     const stopGeneration = () => {
         if (abortControllerRef.current) {
@@ -66,7 +69,7 @@ export default function ApiTester({ config, onMessage, authFetch }) {
         try {
             const key = apiKey || (config.keys?.[0] || '')
             if (!key) {
-                onMessage('error', '请提供 API 密钥')
+                onMessage('error', t('apiTester.missingApiKey'))
                 setLoading(false)
                 setIsStreaming(false)
                 return
@@ -88,8 +91,8 @@ export default function ApiTester({ config, onMessage, authFetch }) {
 
             if (!res.ok) {
                 const data = await res.json()
-                setResponse({ success: false, error: data.error?.message || '请求失败' })
-                onMessage('error', data.error?.message || '请求失败')
+                setResponse({ success: false, error: data.error?.message || t('apiTester.requestFailed') })
+                onMessage('error', data.error?.message || t('apiTester.requestFailed'))
                 setLoading(false)
                 setIsStreaming(false)
                 return
@@ -138,9 +141,9 @@ export default function ApiTester({ config, onMessage, authFetch }) {
             }
         } catch (e) {
             if (e.name === 'AbortError') {
-                onMessage('info', '已停止生成')
+                onMessage('info', t('messages.generationStopped'))
             } else {
-                onMessage('error', '网络错误: ' + e.message)
+                onMessage('error', t('apiTester.networkError', { error: e.message }))
                 setResponse({ error: e.message, success: false })
             }
         } finally {
@@ -172,12 +175,12 @@ export default function ApiTester({ config, onMessage, authFetch }) {
                     account: selectedAccount,
                 })
                 if (data.success) {
-                    onMessage('success', `${selectedAccount}: 测试成功 (${data.response_time}ms)`)
+                    onMessage('success', t('apiTester.testSuccess', { account: selectedAccount, time: data.response_time }))
                 } else {
                     onMessage('error', `${selectedAccount}: ${data.message}`)
                 }
             } catch (e) {
-                onMessage('error', '网络错误: ' + e.message)
+                onMessage('error', t('apiTester.networkError', { error: e.message }))
                 setResponse({ error: e.message })
             } finally {
                 setLoading(false)
@@ -187,6 +190,11 @@ export default function ApiTester({ config, onMessage, authFetch }) {
 
         directTest()
     }
+
+    useEffect(() => {
+        setMessage((prev) => (prev === defaultMessageRef.current ? defaultMessage : prev))
+        defaultMessageRef.current = defaultMessage
+    }, [defaultMessage])
 
     return (
         <div className="flex flex-col lg:grid lg:grid-cols-12 gap-6 h-[calc(100vh-140px)]">
@@ -201,12 +209,12 @@ export default function ApiTester({ config, onMessage, authFetch }) {
                         onClick={() => setConfigExpanded(!configExpanded)}
                         className="lg:hidden flex items-center justify-between p-4 w-full bg-muted/20 hover:bg-muted/30 transition-colors"
                     >
-                        <div className="flex items-center gap-2.5 font-medium text-sm text-foreground">
-                            <div className="p-1.5 rounded-md bg-transparent text-foreground">
-                                <Terminal className="w-4 h-4" />
+                            <div className="flex items-center gap-2.5 font-medium text-sm text-foreground">
+                                <div className="p-1.5 rounded-md bg-transparent text-foreground">
+                                    <Terminal className="w-4 h-4" />
+                                </div>
+                                <span>{t('apiTester.config')}</span>
                             </div>
-                            <span>配置</span>
-                        </div>
                         <div className={clsx("transition-transform duration-300 text-muted-foreground", configExpanded ? "rotate-180" : "")}>
                             <ChevronDown className="w-4 h-4" />
                         </div>
@@ -217,9 +225,9 @@ export default function ApiTester({ config, onMessage, authFetch }) {
                         !configExpanded && "hidden lg:block"
                     )}>
                         <div className="space-y-3">
-                            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider ml-0.5">模型</label>
+                            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider ml-0.5">{t('apiTester.modelLabel')}</label>
                             <div className="grid grid-cols-1 gap-2">
-                                {MODELS.map(m => {
+                                {models.map(m => {
                                     const Icon = m.icon
                                     return (
                                         <button
@@ -256,14 +264,14 @@ export default function ApiTester({ config, onMessage, authFetch }) {
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider ml-0.5">账号策略</label>
+                            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider ml-0.5">{t('apiTester.accountStrategy')}</label>
                             <div className="relative">
                                 <select
                                     className="w-full h-10 pl-3 pr-8 bg-secondary border border-border rounded-lg text-sm appearance-none focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring transition-all cursor-pointer hover:bg-muted"
                                     value={selectedAccount}
                                     onChange={e => setSelectedAccount(e.target.value)}
                                 >
-                                    <option value="" className="bg-popover text-popover-foreground">🎲 随机切换 (支持流式预览)</option>
+                                    <option value="" className="bg-popover text-popover-foreground">{t('apiTester.randomRotation')}</option>
                                     {accounts.map((acc, i) => (
                                         <option key={i} value={acc.email || acc.mobile} className="bg-popover text-popover-foreground">
                                             👤 {acc.email || acc.mobile}
@@ -275,11 +283,11 @@ export default function ApiTester({ config, onMessage, authFetch }) {
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider ml-0.5">API 密钥 (可选)</label>
+                            <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider ml-0.5">{t('apiTester.apiKeyOptional')}</label>
                             <input
                                 type="password"
                                 className="w-full h-10 px-3 bg-muted/30 border border-border rounded-lg text-sm font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-ring focus:border-ring transition-all"
-                                placeholder={config.keys?.[0] ? `默认: ...${config.keys[0].slice(-6)}` : '输入自定义密钥'}
+                                placeholder={config.keys?.[0] ? t('apiTester.apiKeyDefault', { suffix: config.keys[0].slice(-6) }) : t('apiTester.apiKeyPlaceholder')}
                                 value={apiKey}
                                 onChange={e => setApiKey(e.target.value)}
                             />
@@ -324,7 +332,7 @@ export default function ApiTester({ config, onMessage, authFetch }) {
                                             "text-[10px] px-1.5 py-0.5 rounded-sm border uppercase font-medium tracking-wider",
                                             response.success ? "border-emerald-500/20 text-emerald-500 bg-emerald-500/10" : "border-destructive/20 text-destructive bg-destructive/10"
                                         )}>
-                                            {response.status_code || '错误'}
+                                            {response.status_code || t('apiTester.statusError')}
                                         </span>
                                     )}
                                 </div>
@@ -333,7 +341,7 @@ export default function ApiTester({ config, onMessage, authFetch }) {
                                     <div className="text-xs bg-secondary/50 border border-border rounded-lg p-3 space-y-1.5">
                                         <div className="flex items-center gap-1.5 text-muted-foreground">
                                             <Zap className="w-3.5 h-3.5" />
-                                            <span className="font-medium">思维链过程</span>
+                                            <span className="font-medium">{t('apiTester.reasoningTrace')}</span>
                                         </div>
                                         <div className="whitespace-pre-wrap leading-relaxed text-muted-foreground font-mono text-[11px] max-h-60 overflow-y-auto custom-scrollbar pl-5 border-l-2 border-border/50">
                                             {streamingThinking || response?.response?.thinking}
@@ -345,7 +353,7 @@ export default function ApiTester({ config, onMessage, authFetch }) {
                                     {!selectedAccount ? (
                                         streamingContent || (response?.error && <span className="text-destructive font-medium">{response.error}</span>)
                                     ) : (
-                                        response?.response?.message || <span className="text-muted-foreground italic">正在生成响应...</span>
+                                        response?.response?.message || <span className="text-muted-foreground italic">{t('apiTester.generating')}</span>
                                     )}
                                     {isStreaming && <span className="inline-block w-1.5 h-4 bg-primary ml-1 align-middle animate-pulse" />}
                                 </div>
@@ -357,9 +365,9 @@ export default function ApiTester({ config, onMessage, authFetch }) {
                 {/* Input Area */}
                 <div className="p-4 lg:p-6 border-t border-border bg-card">
                     <div className="max-w-4xl mx-auto relative group">
-                        <textarea
-                            className="w-full bg-[#09090b] border border-border rounded-xl pl-4 pr-12 py-3 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all resize-none custom-scrollbar placeholder:text-muted-foreground/50 text-foreground shadow-inner"
-                            placeholder="输入消息..."
+                            <textarea
+                                className="w-full bg-[#09090b] border border-border rounded-xl pl-4 pr-12 py-3 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all resize-none custom-scrollbar placeholder:text-muted-foreground/50 text-foreground shadow-inner"
+                                placeholder={t('apiTester.enterMessage')}
                             rows={1}
                             style={{ minHeight: '52px' }}
                             value={message}
@@ -391,7 +399,7 @@ export default function ApiTester({ config, onMessage, authFetch }) {
                         </div>
                     </div>
                     <div className="max-w-4xl mx-auto mt-3 flex justify-center">
-                        <span className="text-[10px] text-muted-foreground/40 font-medium">DeepSeek 管理员界面</span>
+                        <span className="text-[10px] text-muted-foreground/40 font-medium">{t('apiTester.adminConsoleLabel')}</span>
                     </div>
                 </div>
             </div>
