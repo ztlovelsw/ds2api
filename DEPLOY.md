@@ -71,6 +71,7 @@ docker-compose up -d --build
 - `api/chat-stream.js` 对非流式请求或 `tools` 请求会自动回退到 Go 入口（内部 `__go=1`）
 - `api/chat-stream.js` 仅负责流式数据转发与 SSE 转换；鉴权、账号选择、会话创建、PoW 计算仍由 Go 内部 prepare 接口完成（仅 Vercel 启用）
 - Go prepare 会创建流式 lease，Node 在流结束后回调 release；账号占用语义与 Go 原生流式保持一致
+- `vercel.json` 已将 `api/chat-stream.js` 与 `api/index.go` 的 `maxDuration` 设为 `300`（受套餐上限约束）
 
 至少配置环境变量：
 

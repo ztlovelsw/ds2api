@@ -115,7 +115,8 @@ export default function ApiTester({ config, onMessage, authFetch }) {
                 headers['X-Ds2-Target-Account'] = selectedAccount
             }
 
-            const res = await fetch('/v1/chat/completions', {
+            const endpoint = streamingMode ? '/v1/chat/completions' : '/v1/chat/completions?__go=1'
+            const res = await fetch(endpoint, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({

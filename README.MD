@@ -90,6 +90,7 @@ docker-compose logs -f
 - `/v1/chat/completions` 在 Vercel 上默认走 `api/chat-stream.js`（Node Runtime）以保证实时 SSE
 - `api/chat-stream.js` 仅负责流式数据转发；鉴权、账号选择、会话/PoW 准备仍由 Go 内部 prepare 接口处理
 - Go prepare 会下发 `lease_id`，Node 在流结束后调用 release，确保账号占用时长与 Go 原生流式一致
+- WebUI 的“非流式测试”会直接请求 `?__go=1`，避免 Vercel 上 Node 中转导致长请求更易超时
 - 至少配置：
 - `DS2API_ADMIN_KEY`
 - `DS2API_CONFIG_JSON`（JSON 字符串或 Base64）

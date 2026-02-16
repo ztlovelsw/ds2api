@@ -90,6 +90,7 @@ docker-compose logs -f
 - `/v1/chat/completions` is routed to `api/chat-stream.js` (Node Runtime) on Vercel to preserve real-time SSE
 - `api/chat-stream.js` is data-path only; auth/account/session/PoW preparation still comes from an internal Go prepare endpoint
 - Go prepare returns a `lease_id`; Node releases it at stream end so account occupancy duration stays aligned with native Go streaming behavior
+- WebUI non-stream test calls `?__go=1` directly to avoid extra Node hop timeout risk on long Vercel requests
 - Minimum env vars:
 - `DS2API_ADMIN_KEY`
 - `DS2API_CONFIG_JSON` (raw JSON or Base64)
