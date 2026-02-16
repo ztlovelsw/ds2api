@@ -223,3 +223,29 @@ curl -s http://127.0.0.1:5001/v1/models
 ```bash
 curl -s http://127.0.0.1:5001/admin
 ```
+
+## 7. 发布前本地回归（推荐）
+
+建议在发布前执行一次完整测试集（真实账号链路）：
+
+```bash
+./scripts/testsuite/run-live.sh
+```
+
+可选参数示例：
+
+```bash
+go run ./cmd/ds2api-tests \
+  --config config.json \
+  --admin-key admin \
+  --out artifacts/testsuite \
+  --timeout 120 \
+  --retries 2
+```
+
+测试集会自动执行：
+
+- 语法/构建/单测 preflight
+- 隔离副本配置启动服务（不污染原始 `config.json`）
+- 真实调用场景验证（OpenAI/Claude/Admin/并发/toolcall/流式）
+- 全量请求与响应日志落盘（用于故障复盘）

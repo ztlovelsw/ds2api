@@ -45,6 +45,7 @@ env/
 *.log
 logs/
 uvicorn.log
+artifacts/
 
 # Vercel
 .vercel

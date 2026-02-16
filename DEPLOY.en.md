@@ -225,3 +225,29 @@ If admin UI is required:
 ```bash
 curl -s http://127.0.0.1:5001/admin
 ```
+
+## 7. Pre-release Local Regression (Recommended)
+
+Run the full live testsuite before release:
+
+```bash
+./scripts/testsuite/run-live.sh
+```
+
+Optional flags:
+
+```bash
+go run ./cmd/ds2api-tests \
+  --config config.json \
+  --admin-key admin \
+  --out artifacts/testsuite \
+  --timeout 120 \
+  --retries 2
+```
+
+The testsuite automatically performs:
+
+- preflight checks (syntax/build/unit tests)
+- isolated config copy startup (no mutation to your original `config.json`)
+- live scenario verification (OpenAI/Claude/Admin/concurrency/toolcall/streaming)
+- full request/response artifact logging for debugging

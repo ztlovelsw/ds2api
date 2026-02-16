@@ -210,9 +210,27 @@ Tool-call leakage is handled in the current implementation:
 - API docs: `API.md` / `API.en.md`
 - Deployment docs: `DEPLOY.md` / `DEPLOY.en.md`
 - Contributing: `CONTRIBUTING.md` / `CONTRIBUTING.en.md`
+- Testsuite guide: `TESTING.md`
 
 ```bash
 go test ./...
+```
+
+One-command live end-to-end tests (with full request/response logs):
+
+```bash
+./scripts/testsuite/run-live.sh
+```
+
+Or run with explicit flags:
+
+```bash
+go run ./cmd/ds2api-tests \
+  --config config.json \
+  --admin-key admin \
+  --out artifacts/testsuite \
+  --timeout 120 \
+  --retries 2
 ```
 
 ## Disclaimer

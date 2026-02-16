@@ -210,9 +210,27 @@ cp config.example.json config.json
 - API 文档：`API.md` / `API.en.md`
 - 部署文档：`DEPLOY.md` / `DEPLOY.en.md`
 - 贡献指南：`CONTRIBUTING.md` / `CONTRIBUTING.en.md`
+- 测试集文档：`TESTING.md`
 
 ```bash
 go test ./...
+```
+
+一键真实账号全链路测试（会生成完整请求/响应日志）：
+
+```bash
+./scripts/testsuite/run-live.sh
+```
+
+或使用可配置参数：
+
+```bash
+go run ./cmd/ds2api-tests \
+  --config config.json \
+  --admin-key admin \
+  --out artifacts/testsuite \
+  --timeout 120 \
+  --retries 2
 ```
 
 ## 免责声明
