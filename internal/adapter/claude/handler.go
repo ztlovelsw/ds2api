@@ -232,17 +232,18 @@ func (h *Handler) writeClaudeStream(w http.ResponseWriter, r *http.Request, mode
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "api_error", "message": "streaming unsupported"}})
-		return
+	flusher, hasFlusher := w.(http.Flusher)
+	if !hasFlusher {
+		config.Logger.Warn("[claude_stream] response writer does not support flush; falling back to buffered SSE")
 	}
 	send := func(v any) {
 		b, _ := json.Marshal(v)
 		_, _ = w.Write([]byte("data: "))
 		_, _ = w.Write(b)
 		_, _ = w.Write([]byte("\n\n"))
-		flusher.Flush()
+		if hasFlusher {
+			flusher.Flush()
+		}
 	}
 	messageID := fmt.Sprintf("msg_%d", time.Now().UnixNano())
 	inputTokens := util.EstimateTokens(fmt.Sprintf("%v", messages))

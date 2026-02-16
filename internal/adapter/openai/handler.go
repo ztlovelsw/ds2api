@@ -193,10 +193,9 @@ func (h *Handler) handleStream(w http.ResponseWriter, r *http.Request, resp *htt
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		writeOpenAIError(w, http.StatusInternalServerError, "streaming unsupported")
-		return
+	flusher, hasFlusher := w.(http.Flusher)
+	if !hasFlusher {
+		config.Logger.Warn("[stream] response writer does not support flush; falling back to buffered SSE")
 	}
 
 	lines := make(chan []byte, 128)
@@ -233,11 +232,15 @@ func (h *Handler) handleStream(w http.ResponseWriter, r *http.Request, resp *htt
 		_, _ = w.Write([]byte("data: "))
 		_, _ = w.Write(b)
 		_, _ = w.Write([]byte("\n\n"))
-		flusher.Flush()
+		if hasFlusher {
+			flusher.Flush()
+		}
 	}
 	sendDone := func() {
 		_, _ = w.Write([]byte("data: [DONE]\n\n"))
-		flusher.Flush()
+		if hasFlusher {
+			flusher.Flush()
+		}
 	}
 
 	finalize := func(finishReason string) {
@@ -313,8 +316,10 @@ func (h *Handler) handleStream(w http.ResponseWriter, r *http.Request, resp *htt
 				finalize("stop")
 				return
 			}
-			_, _ = w.Write([]byte(": keep-alive\n\n"))
-			flusher.Flush()
+			if hasFlusher {
+				_, _ = w.Write([]byte(": keep-alive\n\n"))
+				flusher.Flush()
+			}
 		case line, ok := <-lines:
 			if !ok {
 				// Ensure scanner completion is observed only after all queued
