@@ -16,7 +16,7 @@ services:
     container_name: ds2api-dev
     command: ["go", "run", "./cmd/ds2api"]
     ports:
-      - "${PORT:-5001}:5001"
+      - "${PORT:-5001}:${PORT:-5001}"
     env_file:
       - .env
     environment:

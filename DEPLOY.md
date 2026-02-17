@@ -145,12 +145,19 @@ Docker Compose 已配置内置健康检查：
 
 ```yaml
 healthcheck:
-  test: ["CMD", "wget", "-qO-", "http://localhost:5001/healthz"]
+  test: ["CMD", "wget", "-qO-", "http://localhost:${PORT:-5001}/healthz"]
   interval: 30s
   timeout: 10s
   retries: 3
   start_period: 10s
 ```
+
+### 2.6 Docker 常见排查
+
+如果容器日志正常但面板打不开，优先检查：
+
+1. **端口是否一致**：`PORT` 改成非 `5001` 时，访问地址也要改成对应端口（如 `http://localhost:8080/admin`）。
+2. **开发 compose 的 WebUI 静态文件**：`docker-compose.dev.yml` 使用 `go run` 开发镜像，不会在容器内自动安装 Node.js；若仓库里没有 `static/admin`，`/admin` 会返回 404。可先在宿主机构建一次：`./scripts/build-webui.sh`。
 
 ---
 

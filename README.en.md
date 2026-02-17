@@ -80,10 +80,11 @@ flowchart LR
 | Model | Default Mapping |
 | --- | --- |
 | `claude-sonnet-4-5` | `deepseek-chat` |
-| `claude-3-5-haiku-latest` | `deepseek-chat` |
+| `claude-haiku-4-5` (compatible with `claude-3-5-haiku-latest`) | `deepseek-chat` |
 | `claude-opus-4-6` | `deepseek-reasoner` |
 
 Override mapping via `claude_mapping` or `claude_model_mapping` in config.
+In addition, `/anthropic/v1/models` now includes historical Claude 1.x/2.x/3.x/4.x IDs and common aliases for legacy client compatibility.
 
 ## Quick Start
 

@@ -145,12 +145,19 @@ Docker Compose includes a built-in health check:
 
 ```yaml
 healthcheck:
-  test: ["CMD", "wget", "-qO-", "http://localhost:5001/healthz"]
+  test: ["CMD", "wget", "-qO-", "http://localhost:${PORT:-5001}/healthz"]
   interval: 30s
   timeout: 10s
   retries: 3
   start_period: 10s
 ```
+
+### 2.6 Docker Troubleshooting
+
+If container logs look normal but the admin panel is unreachable, check these first:
+
+1. **Port alignment**: when `PORT` is not `5001`, use the same port in your URL (for example `http://localhost:8080/admin`).
+2. **WebUI assets in dev compose**: `docker-compose.dev.yml` runs `go run` in a dev image and does not auto-install Node.js inside the container; if `static/admin` is missing in your repo, `/admin` will return 404. Build once on host: `./scripts/build-webui.sh`.
 
 ---
 

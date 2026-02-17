@@ -247,11 +247,13 @@ data: [DONE]
   "object": "list",
   "data": [
     {"id": "claude-sonnet-4-5", "object": "model", "created": 1715635200, "owned_by": "anthropic"},
-    {"id": "claude-3-5-haiku-latest", "object": "model", "created": 1715635200, "owned_by": "anthropic"},
+    {"id": "claude-haiku-4-5", "object": "model", "created": 1715635200, "owned_by": "anthropic"},
     {"id": "claude-opus-4-6", "object": "model", "created": 1715635200, "owned_by": "anthropic"}
   ]
 }
 ```
+
+> 说明：示例仅展示部分模型；实际返回包含 Claude 1.x/2.x/3.x/4.x 历史模型 ID 与常见别名。
 
 ### `POST /anthropic/v1/messages`
 
@@ -267,7 +269,7 @@ anthropic-version: 2023-06-01
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `model` | string | ✅ | `claude-sonnet-4-5` / `claude-opus-4-6` / `claude-3-5-haiku-latest` |
+| `model` | string | ✅ | 例如 `claude-sonnet-4-5` / `claude-opus-4-6` / `claude-haiku-4-5`（兼容 `claude-3-5-haiku-latest`），并支持历史 Claude 模型 ID |
 | `messages` | array | ✅ | Claude 风格消息数组 |
 | `max_tokens` | number | ❌ | 当前实现不会硬性截断上游输出 |
 | `stream` | boolean | ❌ | 默认 `false` |

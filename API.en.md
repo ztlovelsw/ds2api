@@ -247,11 +247,13 @@ No auth required.
   "object": "list",
   "data": [
     {"id": "claude-sonnet-4-5", "object": "model", "created": 1715635200, "owned_by": "anthropic"},
-    {"id": "claude-3-5-haiku-latest", "object": "model", "created": 1715635200, "owned_by": "anthropic"},
+    {"id": "claude-haiku-4-5", "object": "model", "created": 1715635200, "owned_by": "anthropic"},
     {"id": "claude-opus-4-6", "object": "model", "created": 1715635200, "owned_by": "anthropic"}
   ]
 }
 ```
+
+> Note: the example is partial; the real response includes historical Claude 1.x/2.x/3.x/4.x IDs and common aliases.
 
 ### `POST /anthropic/v1/messages`
 
@@ -267,7 +269,7 @@ anthropic-version: 2023-06-01
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `model` | string | ✅ | `claude-sonnet-4-5` / `claude-opus-4-6` / `claude-3-5-haiku-latest` |
+| `model` | string | ✅ | For example `claude-sonnet-4-5` / `claude-opus-4-6` / `claude-haiku-4-5` (compatible with `claude-3-5-haiku-latest`), plus historical Claude model IDs |
 | `messages` | array | ✅ | Claude-style messages |
 | `max_tokens` | number | ❌ | Not strictly enforced by upstream bridge |
 | `stream` | boolean | ❌ | Default `false` |

@@ -80,10 +80,11 @@ flowchart LR
 | 模型 | 默认映射 |
 | --- | --- |
 | `claude-sonnet-4-5` | `deepseek-chat` |
-| `claude-3-5-haiku-latest` | `deepseek-chat` |
+| `claude-haiku-4-5`（兼容 `claude-3-5-haiku-latest`） | `deepseek-chat` |
 | `claude-opus-4-6` | `deepseek-reasoner` |
 
 可通过配置中的 `claude_mapping` 或 `claude_model_mapping` 覆盖映射关系。
+另外，`/anthropic/v1/models` 现已包含 Claude 1.x/2.x/3.x/4.x 历史模型 ID 与常见别名，便于旧客户端直接兼容。
 
 ## 快速开始
 
