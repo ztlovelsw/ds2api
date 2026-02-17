@@ -1056,7 +1056,7 @@ func (r *Runner) caseAnthropicNonstream(ctx context.Context, cc *caseContext) er
 			"content-type":      "application/json",
 		},
 		Body: map[string]any{
-			"model": "claude-sonnet-4-20250514",
+			"model": "claude-sonnet-4-5",
 			"messages": []map[string]any{
 				{"role": "user", "content": "hello"},
 			},
@@ -1084,7 +1084,7 @@ func (r *Runner) caseAnthropicStream(ctx context.Context, cc *caseContext) error
 			"content-type":      "application/json",
 		},
 		Body: map[string]any{
-			"model": "claude-sonnet-4-20250514",
+			"model": "claude-sonnet-4-5",
 			"messages": []map[string]any{
 				{"role": "user", "content": "stream hello"},
 			},
@@ -1113,7 +1113,7 @@ func (r *Runner) caseAnthropicCountTokens(ctx context.Context, cc *caseContext) 
 			"content-type":      "application/json",
 		},
 		Body: map[string]any{
-			"model": "claude-sonnet-4-20250514",
+			"model": "claude-sonnet-4-5",
 			"messages": []map[string]any{
 				{"role": "user", "content": "count me"},
 			},

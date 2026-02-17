@@ -275,7 +275,7 @@ func (r *Runner) caseSSEJSONIntegrity(ctx context.Context, cc *caseContext) erro
 			"anthropic-version": "2023-06-01",
 		},
 		Body: map[string]any{
-			"model": "claude-sonnet-4-20250514",
+			"model": "claude-sonnet-4-5",
 			"messages": []map[string]any{
 				{"role": "user", "content": "stream json integrity"},
 			},

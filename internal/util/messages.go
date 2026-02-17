@@ -9,7 +9,7 @@ import (
 
 var markdownImagePattern = regexp.MustCompile(`!\[(.*?)\]\((.*?)\)`)
 
-const ClaudeDefaultModel = "claude-sonnet-4-20250514"
+const ClaudeDefaultModel = "claude-sonnet-4-5"
 
 type Message struct {
 	Role    string `json:"role"`

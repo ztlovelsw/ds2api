@@ -36,7 +36,7 @@ func TestMessagesPrepareRoles(t *testing.T) {
 func TestConvertClaudeToDeepSeek(t *testing.T) {
 	store := config.LoadStore()
 	req := map[string]any{
-		"model":    "claude-sonnet-4-20250514-slow",
+		"model":    "claude-opus-4-6",
 		"messages": []any{map[string]any{"role": "user", "content": "Hi"}},
 		"system":   "You are helpful",
 		"stream":   true,

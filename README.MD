@@ -79,11 +79,12 @@ flowchart LR
 
 | 模型 | 默认映射 |
 | --- | --- |
-| `claude-sonnet-4-20250514` | `deepseek-chat` |
-| `claude-sonnet-4-20250514-fast` | `deepseek-chat` |
-| `claude-sonnet-4-20250514-slow` | `deepseek-reasoner` |
+| `claude-sonnet-4-5` | `deepseek-chat` |
+| `claude-haiku-4-5`（兼容 `claude-3-5-haiku-latest`） | `deepseek-chat` |
+| `claude-opus-4-6` | `deepseek-reasoner` |
 
 可通过配置中的 `claude_mapping` 或 `claude_model_mapping` 覆盖映射关系。
+另外，`/anthropic/v1/models` 现已包含 Claude 1.x/2.x/3.x/4.x 历史模型 ID 与常见别名，便于旧客户端直接兼容。
 
 ## 快速开始
 
@@ -131,7 +132,7 @@ docker-compose logs -f
 3. 配置环境变量（至少设置 `DS2API_ADMIN_KEY` 和 `DS2API_CONFIG_JSON`）
 4. 部署
 
-> **流式说明**：`/v1/chat/completions` 在 Vercel 上默认走 `api/chat-stream.js`（Node Runtime）以保证实时 SSE。鉴权、账号选择、会话/PoW 准备仍由 Go 内部 prepare 接口完成，Node 端仅转发流数据。
+> **流式说明**：`/v1/chat/completions` 在 Vercel 上默认走 `api/chat-stream.js`（Node Runtime）以保证实时 SSE。鉴权、账号选择、会话/PoW 准备仍由 Go 内部 prepare 接口完成；流式响应（含 `tools`）在 Node 侧执行与 Go 对齐的输出组装与防泄漏处理。
 
 详细部署说明请参阅 [部署指南](DEPLOY.md)。
 
@@ -147,6 +148,22 @@ cp config.example.json config.json
 # 编辑 config.json
 ./ds2api
 ```
+
+### 方式五：OpenCode CLI 接入
+
+1. 复制示例配置：
+
+```bash
+cp opencode.json.example opencode.json
+```
+
+2. 编辑 `opencode.json`：
+- 将 `baseURL` 改为你的 DS2API 地址（例如 `https://your-domain.com/v1`）
+- 将 `apiKey` 改为你的 DS2API key（对应 `config.keys`）
+
+3. 在项目目录启动 OpenCode CLI（按你的安装方式运行 `opencode`）。
+
+> 建议优先使用 OpenAI 兼容路径（`/v1/*`），即示例里的 `@ai-sdk/openai-compatible` provider。
 
 ## 配置说明
 

@@ -145,12 +145,19 @@ Docker Compose 已配置内置健康检查：
 
 ```yaml
 healthcheck:
-  test: ["CMD", "wget", "-qO-", "http://localhost:5001/healthz"]
+  test: ["CMD", "wget", "-qO-", "http://localhost:${PORT:-5001}/healthz"]
   interval: 30s
   timeout: 10s
   retries: 3
   start_period: 10s
 ```
+
+### 2.6 Docker 常见排查
+
+如果容器日志正常但面板打不开，优先检查：
+
+1. **端口是否一致**：`PORT` 改成非 `5001` 时，访问地址也要改成对应端口（如 `http://localhost:8080/admin`）。
+2. **开发 compose 的 WebUI 静态文件**：`docker-compose.dev.yml` 使用 `go run` 开发镜像，不会在容器内自动安装 Node.js；若仓库里没有 `static/admin`，`/admin` 会返回 404。可先在宿主机构建一次：`./scripts/build-webui.sh`。
 
 ---
 
@@ -211,14 +218,15 @@ api/index.go  api/chat-stream.js
 1. `api/chat-stream.js` 收到 `/v1/chat/completions` 请求
 2. Node 调用 Go 内部 prepare 接口（`?__stream_prepare=1`），获取会话 ID、PoW、token 等
 3. Go prepare 创建 stream lease，锁定账号
-4. Node 直连 DeepSeek 上游，实时流式转发 SSE 给客户端
+4. Node 直连 DeepSeek 上游，实时流式转发 SSE 给客户端（含 OpenAI chunk 封装与 tools 防泄漏筛分）
 5. 流结束后 Node 调用 Go release 接口（`?__stream_release=1`），释放账号
 
 > 该适配**仅在 Vercel 环境生效**；本地与 Docker 仍走纯 Go 链路。
 
-#### 非流式与 Tool Call 回退
+#### 非流式回退与 Tool Call 处理
 
-- `api/chat-stream.js` 对非流式请求或带 `tools` 的请求会自动回退到 Go 入口（`?__go=1`）
+- `api/chat-stream.js` 仅对非流式请求回退到 Go 入口（`?__go=1`）
+- 流式请求（包括带 `tools`）走 Node 路径，并执行与 Go 对齐的 tool-call 防泄漏处理
 - WebUI 的"非流式测试"直接请求 `?__go=1`，避免 Node 中转造成长请求超时
 
 #### 函数时长

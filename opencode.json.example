@@ -1,0 +1,22 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "ds2api": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "DS2API",
+      "options": {
+        "baseURL": "http://localhost:5001/v1",
+        "apiKey": "your-api-key"
+      },
+      "models": {
+        "deepseek-chat": {
+          "name": "DeepSeek Chat (DS2API)"
+        },
+        "deepseek-reasoner": {
+          "name": "DeepSeek Reasoner (DS2API)"
+        }
+      }
+    }
+  },
+  "model": "ds2api/deepseek-chat"
+}

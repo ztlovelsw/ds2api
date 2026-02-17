@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const TOOL_CALL_PATTERN = /\{\s*["']tool_calls["']\s*:\s*\[(.*?)\]\s*\}/s;
 
 function extractToolNames(tools) {
   if (!Array.isArray(tools) || tools.length === 0) {
@@ -105,7 +106,7 @@ function flushToolSieve(state, toolNames) {
         events.push({ type: 'text', text: consumed.suffix });
       }
     } else if (state.capture) {
-      events.push({ type: 'text', text: state.capture });
+      // Incomplete captured tool JSON at stream end: suppress raw capture.
     }
     state.capture = '';
     state.capturing = false;
@@ -129,12 +130,9 @@ function splitSafeContentForToolDetection(s) {
   if (suspiciousStart > 0) {
     return [text.slice(0, suspiciousStart), text.slice(suspiciousStart)];
   }
-  const chars = Array.from(text);
-  const maxHold = 128;
-  if (chars.length <= maxHold) {
-    return ['', text];
-  }
-  return [chars.slice(0, chars.length - maxHold).join(''), chars.slice(chars.length - maxHold).join('')];
+  // If suspicious content starts at the beginning, keep holding until we can
+  // either parse a full tool JSON block or reach stream flush.
+  return ['', text];
 }
 
 function findSuspiciousPrefixStart(s) {
@@ -168,30 +166,23 @@ function consumeToolCapture(captured, toolNames) {
   const lower = captured.toLowerCase();
   const keyIdx = lower.indexOf('tool_calls');
   if (keyIdx < 0) {
-    if (Array.from(captured).length >= 256) {
-      return { ready: true, prefix: captured, calls: [], suffix: '' };
-    }
     return { ready: false, prefix: '', calls: [], suffix: '' };
   }
   const start = captured.slice(0, keyIdx).lastIndexOf('{');
   if (start < 0) {
-    if (Array.from(captured).length >= 512) {
-      return { ready: true, prefix: captured, calls: [], suffix: '' };
-    }
     return { ready: false, prefix: '', calls: [], suffix: '' };
   }
   const obj = extractJSONObjectFrom(captured, start);
   if (!obj.ok) {
-    if (Array.from(captured).length >= 4096) {
-      return { ready: true, prefix: captured, calls: [], suffix: '' };
-    }
     return { ready: false, prefix: '', calls: [], suffix: '' };
   }
   const parsed = parseToolCalls(captured.slice(start, obj.end), toolNames);
   if (parsed.length === 0) {
+    // `tool_calls` key exists but strict JSON parse failed.
+    // Drop the captured object body to avoid leaking raw tool JSON.
     return {
       ready: true,
-      prefix: captured.slice(0, obj.end),
+      prefix: captured.slice(0, start),
       calls: [],
       suffix: captured.slice(obj.end),
     };
@@ -292,22 +283,51 @@ function buildToolCallCandidates(text) {
       candidates.push(toStringSafe(m[1]));
     }
   }
-  const keyIdx = trimmed.toLowerCase().indexOf('tool_calls');
-  if (keyIdx >= 0) {
-    const start = trimmed.slice(0, keyIdx).lastIndexOf('{');
-    if (start >= 0) {
-      const obj = extractJSONObjectFrom(trimmed, start);
-      if (obj.ok) {
-        candidates.push(toStringSafe(trimmed.slice(start, obj.end)));
-      }
-    }
+  for (const candidate of extractToolCallObjects(trimmed)) {
+    candidates.push(toStringSafe(candidate));
   }
   const first = trimmed.indexOf('{');
   const last = trimmed.lastIndexOf('}');
   if (first >= 0 && last > first) {
     candidates.push(toStringSafe(trimmed.slice(first, last + 1)));
   }
+  const m = trimmed.match(TOOL_CALL_PATTERN);
+  if (m && m[1]) {
+    candidates.push(`{"tool_calls":[${m[1]}]}`);
+  }
   return [...new Set(candidates.filter(Boolean))];
+}
+
+function extractToolCallObjects(text) {
+  const raw = toStringSafe(text);
+  if (!raw) {
+    return [];
+  }
+  const lower = raw.toLowerCase();
+  const out = [];
+  let offset = 0;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    let idx = lower.indexOf('tool_calls', offset);
+    if (idx < 0) {
+      break;
+    }
+    let start = raw.slice(0, idx).lastIndexOf('{');
+    while (start >= 0) {
+      const obj = extractJSONObjectFrom(raw, start);
+      if (obj.ok) {
+        out.push(raw.slice(start, obj.end).trim());
+        offset = obj.end;
+        idx = -1;
+        break;
+      }
+      start = raw.slice(0, start).lastIndexOf('{');
+    }
+    if (idx >= 0) {
+      offset = idx + 'tool_calls'.length;
+    }
+  }
+  return out;
 }
 
 function parseToolCallsPayload(payload) {
@@ -452,5 +472,6 @@ module.exports = {
   createToolSieveState,
   processToolSieveChunk,
   flushToolSieve,
+  parseToolCalls,
   formatOpenAIStreamToolCalls,
 };

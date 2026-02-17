@@ -145,12 +145,19 @@ Docker Compose includes a built-in health check:
 
 ```yaml
 healthcheck:
-  test: ["CMD", "wget", "-qO-", "http://localhost:5001/healthz"]
+  test: ["CMD", "wget", "-qO-", "http://localhost:${PORT:-5001}/healthz"]
   interval: 30s
   timeout: 10s
   retries: 3
   start_period: 10s
 ```
+
+### 2.6 Docker Troubleshooting
+
+If container logs look normal but the admin panel is unreachable, check these first:
+
+1. **Port alignment**: when `PORT` is not `5001`, use the same port in your URL (for example `http://localhost:8080/admin`).
+2. **WebUI assets in dev compose**: `docker-compose.dev.yml` runs `go run` in a dev image and does not auto-install Node.js inside the container; if `static/admin` is missing in your repo, `/admin` will return 404. Build once on host: `./scripts/build-webui.sh`.
 
 ---
 
@@ -211,14 +218,15 @@ Vercel Go Runtime applies platform-level response buffering, so this project use
 1. `api/chat-stream.js` receives `/v1/chat/completions` request
 2. Node calls Go internal prepare endpoint (`?__stream_prepare=1`) for session ID, PoW, token
 3. Go prepare creates a stream lease, locking the account
-4. Node connects directly to DeepSeek upstream, relays SSE in real-time to client
+4. Node connects directly to DeepSeek upstream, relays SSE in real-time to client (including OpenAI chunk framing and tools anti-leak sieve)
 5. After stream ends, Node calls Go release endpoint (`?__stream_release=1`) to free the account
 
 > This adaptation is **Vercel-only**; local and Docker remain pure Go.
 
-#### Non-Stream and Tool Call Fallback
+#### Non-Stream Fallback and Tool Call Handling
 
-- `api/chat-stream.js` automatically falls back to Go entry (`?__go=1`) for non-stream requests or requests with `tools`
+- `api/chat-stream.js` falls back to Go entry (`?__go=1`) for non-stream requests only
+- Streaming requests (including requests with `tools`) stay on the Node path and use Go-aligned tool-call anti-leak handling
 - WebUI non-stream test calls `?__go=1` directly to avoid Node hop timeout on long requests
 
 #### Function Duration

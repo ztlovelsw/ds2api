@@ -96,10 +96,7 @@ func flushToolSieve(state *toolStreamSieveState, toolNames []string) []toolStrea
 				events = append(events, toolStreamEvent{Content: consumedSuffix})
 			}
 		} else {
-			raw := state.capture.String()
-			if raw != "" {
-				events = append(events, toolStreamEvent{Content: raw})
-			}
+			// Incomplete captured tool JSON at stream end: suppress raw capture.
 		}
 		state.capture.Reset()
 		state.capturing = false
@@ -122,12 +119,9 @@ func splitSafeContentForToolDetection(s string) (safe, hold string) {
 	if suspiciousStart > 0 {
 		return s[:suspiciousStart], s[suspiciousStart:]
 	}
-	runes := []rune(s)
-	const maxHold = 128
-	if len(runes) <= maxHold {
-		return "", s
-	}
-	return string(runes[:len(runes)-maxHold]), string(runes[len(runes)-maxHold:])
+	// If suspicious content starts at position 0, keep holding until we can
+	// parse a complete tool JSON block or reach stream flush.
+	return "", s
 }
 
 func findSuspiciousPrefixStart(s string) int {
@@ -167,28 +161,21 @@ func consumeToolCapture(captured string, toolNames []string) (prefix string, cal
 	lower := strings.ToLower(captured)
 	keyIdx := strings.Index(lower, "tool_calls")
 	if keyIdx < 0 {
-		if len([]rune(captured)) >= 256 {
-			return captured, nil, "", true
-		}
 		return "", nil, "", false
 	}
 	start := strings.LastIndex(captured[:keyIdx], "{")
 	if start < 0 {
-		if len([]rune(captured)) >= 512 {
-			return captured, nil, "", true
-		}
 		return "", nil, "", false
 	}
 	obj, end, ok := extractJSONObjectFrom(captured, start)
 	if !ok {
-		if len([]rune(captured)) >= 4096 {
-			return captured, nil, "", true
-		}
 		return "", nil, "", false
 	}
 	parsed := util.ParseToolCalls(obj, toolNames)
 	if len(parsed) == 0 {
-		return captured[:end], nil, captured[end:], true
+		// `tool_calls` key exists but strict JSON parse failed.
+		// Drop the captured object body to avoid leaking raw tool JSON.
+		return captured[:start], nil, captured[end:], true
 	}
 	return captured[:start], parsed, captured[end:], true
 }

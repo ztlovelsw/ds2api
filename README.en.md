@@ -79,11 +79,12 @@ flowchart LR
 
 | Model | Default Mapping |
 | --- | --- |
-| `claude-sonnet-4-20250514` | `deepseek-chat` |
-| `claude-sonnet-4-20250514-fast` | `deepseek-chat` |
-| `claude-sonnet-4-20250514-slow` | `deepseek-reasoner` |
+| `claude-sonnet-4-5` | `deepseek-chat` |
+| `claude-haiku-4-5` (compatible with `claude-3-5-haiku-latest`) | `deepseek-chat` |
+| `claude-opus-4-6` | `deepseek-reasoner` |
 
 Override mapping via `claude_mapping` or `claude_model_mapping` in config.
+In addition, `/anthropic/v1/models` now includes historical Claude 1.x/2.x/3.x/4.x IDs and common aliases for legacy client compatibility.
 
 ## Quick Start
 
@@ -131,7 +132,7 @@ Rebuild after updates: `docker-compose up -d --build`
 3. Set environment variables (minimum: `DS2API_ADMIN_KEY` and `DS2API_CONFIG_JSON`)
 4. Deploy
 
-> **Streaming note**: `/v1/chat/completions` on Vercel is routed to `api/chat-stream.js` (Node Runtime) for real-time SSE. Auth, account selection, session/PoW preparation are still handled by the Go internal prepare endpoint; Node only relays stream data.
+> **Streaming note**: `/v1/chat/completions` on Vercel is routed to `api/chat-stream.js` (Node Runtime) for real-time SSE. Auth, account selection, and session/PoW preparation are still handled by the Go internal prepare endpoint; streaming output (including `tools`) is assembled on Node with Go-aligned anti-leak handling.
 
 For detailed deployment instructions, see the [Deployment Guide](DEPLOY.en.md).
 
@@ -147,6 +148,22 @@ cp config.example.json config.json
 # Edit config.json
 ./ds2api
 ```
+
+### Option 5: OpenCode CLI
+
+1. Copy the example config:
+
+```bash
+cp opencode.json.example opencode.json
+```
+
+2. Edit `opencode.json`:
+- Set `baseURL` to your DS2API endpoint (for example, `https://your-domain.com/v1`)
+- Set `apiKey` to your DS2API key (from `config.keys`)
+
+3. Start OpenCode CLI in the project directory (run `opencode` using your installed method).
+
+> Recommended: use the OpenAI-compatible path (`/v1/*`) via `@ai-sdk/openai-compatible` as shown in the example.
 
 ## Configuration
 

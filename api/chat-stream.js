@@ -5,6 +5,7 @@ const {
   createToolSieveState,
   processToolSieveChunk,
   flushToolSieve,
+  parseToolCalls,
   formatOpenAIStreamToolCalls,
 } = require('./helpers/stream-tool-sieve');
 
@@ -155,20 +156,19 @@ module.exports = async function handler(req, res) {
         return;
       }
       ended = true;
-      if (toolSieveEnabled) {
+      const detected = parseToolCalls(outputText, toolNames);
+      if (detected.length > 0 && !toolCallsEmitted) {
+        toolCallsEmitted = true;
+        sendDeltaFrame({ tool_calls: formatOpenAIStreamToolCalls(detected) });
+      } else if (toolSieveEnabled) {
         const tailEvents = flushToolSieve(toolSieveState, toolNames);
         for (const evt of tailEvents) {
-          if (evt.type === 'tool_calls') {
-            toolCallsEmitted = true;
-            sendDeltaFrame({ tool_calls: formatOpenAIStreamToolCalls(evt.calls) });
-            continue;
-          }
           if (evt.text) {
             sendDeltaFrame({ content: evt.text });
           }
         }
       }
-      if (toolCallsEmitted) {
+      if (detected.length > 0 || toolCallsEmitted) {
         reason = 'tool_calls';
       }
       sendFrame({
@@ -233,8 +233,10 @@ module.exports = async function handler(req, res) {
               continue;
             }
             if (p.type === 'thinking') {
-              thinkingText += p.text;
-              sendDeltaFrame({ reasoning_content: p.text });
+              if (thinkingEnabled) {
+                thinkingText += p.text;
+                sendDeltaFrame({ reasoning_content: p.text });
+              }
             } else {
               outputText += p.text;
               if (!toolSieveEnabled) {

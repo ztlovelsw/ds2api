@@ -246,12 +246,14 @@ No auth required.
 {
   "object": "list",
   "data": [
-    {"id": "claude-sonnet-4-20250514", "object": "model", "created": 1715635200, "owned_by": "anthropic"},
-    {"id": "claude-sonnet-4-20250514-fast", "object": "model", "created": 1715635200, "owned_by": "anthropic"},
-    {"id": "claude-sonnet-4-20250514-slow", "object": "model", "created": 1715635200, "owned_by": "anthropic"}
+    {"id": "claude-sonnet-4-5", "object": "model", "created": 1715635200, "owned_by": "anthropic"},
+    {"id": "claude-haiku-4-5", "object": "model", "created": 1715635200, "owned_by": "anthropic"},
+    {"id": "claude-opus-4-6", "object": "model", "created": 1715635200, "owned_by": "anthropic"}
   ]
 }
 ```
+
+> Note: the example is partial; the real response includes historical Claude 1.x/2.x/3.x/4.x IDs and common aliases.
 
 ### `POST /anthropic/v1/messages`
 
@@ -267,7 +269,7 @@ anthropic-version: 2023-06-01
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `model` | string | ✅ | `claude-sonnet-4-20250514` / `-fast` / `-slow` |
+| `model` | string | ✅ | For example `claude-sonnet-4-5` / `claude-opus-4-6` / `claude-haiku-4-5` (compatible with `claude-3-5-haiku-latest`), plus historical Claude model IDs |
 | `messages` | array | ✅ | Claude-style messages |
 | `max_tokens` | number | ❌ | Not strictly enforced by upstream bridge |
 | `stream` | boolean | ❌ | Default `false` |
@@ -281,7 +283,7 @@ anthropic-version: 2023-06-01
   "id": "msg_1738400000000000000",
   "type": "message",
   "role": "assistant",
-  "model": "claude-sonnet-4-20250514",
+  "model": "claude-sonnet-4-5",
   "content": [
     {"type": "text", "text": "response"}
   ],
@@ -325,7 +327,7 @@ data: {"type":"message_stop"}
 
 **Notes**:
 
-- Thinking-enabled models (`-slow`) stream `thinking_delta`
+- Models whose names contain `opus` / `reasoner` / `slow` stream `thinking_delta`
 - `signature_delta` is not emitted (DeepSeek does not provide verifiable thinking signatures)
 - In `tools` mode, the stream avoids leaking raw tool JSON and does not force `input_json_delta`
 
@@ -335,7 +337,7 @@ data: {"type":"message_stop"}
 
 ```json
 {
-  "model": "claude-sonnet-4-20250514",
+  "model": "claude-sonnet-4-5",
   "messages": [
     {"role": "user", "content": "Hello"}
   ]
@@ -754,7 +756,7 @@ curl http://localhost:5001/anthropic/v1/messages \
   -H "Content-Type: application/json" \
   -H "anthropic-version: 2023-06-01" \
   -d '{
-    "model": "claude-sonnet-4-20250514",
+    "model": "claude-sonnet-4-5",
     "max_tokens": 1024,
     "messages": [{"role": "user", "content": "Hello"}]
   }'
@@ -768,7 +770,7 @@ curl http://localhost:5001/anthropic/v1/messages \
   -H "Content-Type: application/json" \
   -H "anthropic-version: 2023-06-01" \
   -d '{
-    "model": "claude-sonnet-4-20250514-slow",
+    "model": "claude-opus-4-6",
     "max_tokens": 1024,
     "messages": [{"role": "user", "content": "Explain relativity"}],
     "stream": true
