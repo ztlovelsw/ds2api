@@ -183,3 +183,15 @@ test('sieve still intercepts tool call after leading plain text without suffix',
   assert.equal(leakedText.includes('我将调用工具。'), true);
   assert.equal(leakedText.toLowerCase().includes('tool_calls'), false);
 });
+
+test('sieve intercepts tool call and preserves trailing same-chunk text', () => {
+  const events = runSieve(
+    ['{"tool_calls":[{"name":"read_file","input":{"path":"README.MD"}}]}然后继续解释。'],
+    ['read_file'],
+  );
+  const hasTool = events.some((evt) => (evt.type === 'tool_calls' && evt.calls?.length > 0) || (evt.type === 'tool_call_deltas' && evt.deltas?.length > 0));
+  const leakedText = collectText(events);
+  assert.equal(hasTool, true);
+  assert.equal(leakedText.includes('然后继续解释。'), true);
+  assert.equal(leakedText.toLowerCase().includes('tool_calls'), false);
+});

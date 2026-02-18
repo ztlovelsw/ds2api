@@ -227,7 +227,7 @@ func consumeToolCapture(state *toolStreamSieveState, toolNames []string) (prefix
 	}
 	prefixPart := captured[:start]
 	suffixPart := captured[end:]
-	if !state.toolNameSent && (strings.TrimSpace(prefixPart) != "" || strings.TrimSpace(suffixPart) != "" || looksLikeToolExampleContext(state.recentTextTail)) {
+	if !state.toolNameSent && (strings.TrimSpace(prefixPart) != "" || looksLikeToolExampleContext(state.recentTextTail) || looksLikeToolExampleContext(suffixPart)) {
 		return captured, nil, "", true
 	}
 	parsed := util.ParseStandaloneToolCalls(obj, toolNames)

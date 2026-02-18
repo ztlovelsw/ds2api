@@ -220,7 +220,7 @@ function consumeToolCapture(state, toolNames) {
   }
   const prefixPart = captured.slice(0, start);
   const suffixPart = captured.slice(obj.end);
-  if (!state.toolNameSent && (hasMeaningfulText(prefixPart) || hasMeaningfulText(suffixPart) || looksLikeToolExampleContext(state.recentTextTail))) {
+  if (!state.toolNameSent && (hasMeaningfulText(prefixPart) || looksLikeToolExampleContext(state.recentTextTail) || looksLikeToolExampleContext(suffixPart))) {
     return {
       ready: true,
       prefix: captured,

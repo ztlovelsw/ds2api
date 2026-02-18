@@ -539,6 +539,47 @@ func TestHandleStreamToolCallAfterLeadingTextStillIntercepted(t *testing.T) {
 	}
 }
 
+func TestHandleStreamToolCallWithSameChunkTrailingTextStillIntercepted(t *testing.T) {
+	h := &Handler{}
+	resp := makeSSEHTTPResponse(
+		`data: {"p":"response/content","v":"{\"tool_calls\":[{\"name\":\"search\",\"input\":{\"q\":\"go\"}}]}接下来我会继续说明。"}`,
+		`data: [DONE]`,
+	)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	h.handleStream(rec, req, resp, "cid7c", "deepseek-chat", "prompt", false, false, []string{"search"})
+
+	frames, done := parseSSEDataFrames(t, rec.Body.String())
+	if !done {
+		t.Fatalf("expected [DONE], body=%s", rec.Body.String())
+	}
+	if !streamHasToolCallsDelta(frames) {
+		t.Fatalf("expected tool_calls delta, body=%s", rec.Body.String())
+	}
+	content := strings.Builder{}
+	for _, frame := range frames {
+		choices, _ := frame["choices"].([]any)
+		for _, item := range choices {
+			choice, _ := item.(map[string]any)
+			delta, _ := choice["delta"].(map[string]any)
+			if c, ok := delta["content"].(string); ok {
+				content.WriteString(c)
+			}
+		}
+	}
+	got := content.String()
+	if !strings.Contains(got, "接下来我会继续说明。") {
+		t.Fatalf("expected trailing plain text to be preserved, got=%q", got)
+	}
+	if strings.Contains(strings.ToLower(got), "tool_calls") {
+		t.Fatalf("unexpected raw tool json leak, got=%q", got)
+	}
+	if streamFinishReason(frames) != "tool_calls" {
+		t.Fatalf("expected finish_reason=tool_calls, body=%s", rec.Body.String())
+	}
+}
+
 func TestHandleStreamToolCallKeyAppearsLateStillNoPrefixLeak(t *testing.T) {
 	h := &Handler{}
 	spaces := strings.Repeat(" ", 200)
