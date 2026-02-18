@@ -210,7 +210,7 @@ func TestHandleNonStreamUnknownToolStillIntercepted(t *testing.T) {
 	}
 }
 
-func TestHandleNonStreamEmbeddedToolCallExampleNotIntercepted(t *testing.T) {
+func TestHandleNonStreamEmbeddedToolCallExampleIntercepted(t *testing.T) {
 	h := &Handler{}
 	resp := makeSSEHTTPResponse(
 		`data: {"p":"response/content","v":"下面是示例："}`,
@@ -228,16 +228,16 @@ func TestHandleNonStreamEmbeddedToolCallExampleNotIntercepted(t *testing.T) {
 	out := decodeJSONBody(t, rec.Body.String())
 	choices, _ := out["choices"].([]any)
 	choice, _ := choices[0].(map[string]any)
-	if choice["finish_reason"] != "stop" {
-		t.Fatalf("expected finish_reason=stop, got %#v", choice["finish_reason"])
+	if choice["finish_reason"] != "tool_calls" {
+		t.Fatalf("expected finish_reason=tool_calls, got %#v", choice["finish_reason"])
 	}
 	msg, _ := choice["message"].(map[string]any)
-	if _, ok := msg["tool_calls"]; ok {
-		t.Fatalf("did not expect tool_calls field for embedded example: %#v", msg["tool_calls"])
+	toolCalls, _ := msg["tool_calls"].([]any)
+	if len(toolCalls) == 0 {
+		t.Fatalf("expected tool_calls field for embedded example: %#v", msg["tool_calls"])
 	}
-	content, _ := msg["content"].(string)
-	if !strings.Contains(content, "示例") || !strings.Contains(content, `"tool_calls"`) {
-		t.Fatalf("expected embedded example to pass through as text, got %q", content)
+	if msg["content"] != nil {
+		t.Fatalf("expected content nil when tool_calls detected, got %#v", msg["content"])
 	}
 }
 
@@ -471,8 +471,8 @@ func TestHandleStreamToolCallMixedWithPlainTextSegments(t *testing.T) {
 	if !done {
 		t.Fatalf("expected [DONE], body=%s", rec.Body.String())
 	}
-	if streamHasToolCallsDelta(frames) {
-		t.Fatalf("did not expect tool_calls delta in mixed prose stream, body=%s", rec.Body.String())
+	if !streamHasToolCallsDelta(frames) {
+		t.Fatalf("expected tool_calls delta in mixed prose stream, body=%s", rec.Body.String())
 	}
 	content := strings.Builder{}
 	for _, frame := range frames {
@@ -489,11 +489,11 @@ func TestHandleStreamToolCallMixedWithPlainTextSegments(t *testing.T) {
 	if !strings.Contains(got, "下面是示例：") || !strings.Contains(got, "请勿执行。") {
 		t.Fatalf("expected pre/post plain text to pass sieve, got=%q", got)
 	}
-	if !strings.Contains(got, `"tool_calls"`) {
-		t.Fatalf("expected mixed stream to preserve embedded tool_calls example text, got=%q", got)
+	if strings.Contains(strings.ToLower(got), `"tool_calls"`) {
+		t.Fatalf("expected no raw tool_calls json leak in content, got=%q", got)
 	}
-	if streamFinishReason(frames) != "stop" {
-		t.Fatalf("expected finish_reason=stop for mixed prose, body=%s", rec.Body.String())
+	if streamFinishReason(frames) != "tool_calls" {
+		t.Fatalf("expected finish_reason=tool_calls for mixed prose, body=%s", rec.Body.String())
 	}
 }
 

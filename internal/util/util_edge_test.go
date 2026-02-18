@@ -416,18 +416,6 @@ func TestParseStandaloneToolCallsFencedCodeBlock(t *testing.T) {
 
 // ─── looksLikeToolExampleContext ─────────────────────────────────────
 
-func TestLooksLikeToolExampleContextChinese(t *testing.T) {
-	if !looksLikeToolExampleContext("下面是示例") {
-		t.Fatal("expected true for Chinese example context")
-	}
-}
-
-func TestLooksLikeToolExampleContextEnglish(t *testing.T) {
-	if !looksLikeToolExampleContext("here is an example of") {
-		t.Fatal("expected true for English example context")
-	}
-}
-
 func TestLooksLikeToolExampleContextNone(t *testing.T) {
 	if looksLikeToolExampleContext("I will call the tool now") {
 		t.Fatal("expected false for non-example context")

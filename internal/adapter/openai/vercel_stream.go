@@ -62,10 +62,15 @@ func (h *Handler) handleVercelStreamPrepare(w http.ResponseWriter, r *http.Reque
 		writeOpenAIError(w, http.StatusBadRequest, "Request must include 'model' and 'messages'.")
 		return
 	}
-	thinkingEnabled, searchEnabled, ok := config.GetModelConfig(model)
+	resolvedModel, ok := config.ResolveModel(h.Store, model)
 	if !ok {
-		writeOpenAIError(w, http.StatusServiceUnavailable, fmt.Sprintf("Model '%s' is not available.", model))
+		writeOpenAIError(w, http.StatusBadRequest, fmt.Sprintf("Model '%s' is not available.", model))
 		return
+	}
+	thinkingEnabled, searchEnabled, _ := config.GetModelConfig(resolvedModel)
+	responseModel := strings.TrimSpace(model)
+	if responseModel == "" {
+		responseModel = resolvedModel
 	}
 
 	finalPrompt, _ := buildOpenAIFinalPrompt(messagesRaw, req["tools"])
@@ -97,6 +102,7 @@ func (h *Handler) handleVercelStreamPrepare(w http.ResponseWriter, r *http.Reque
 		"thinking_enabled":  thinkingEnabled,
 		"search_enabled":    searchEnabled,
 	}
+	applyOpenAIChatPassThrough(req, payload)
 	leaseID := h.holdStreamLease(a)
 	if leaseID == "" {
 		writeOpenAIError(w, http.StatusInternalServerError, "failed to create stream lease")
@@ -106,7 +112,7 @@ func (h *Handler) handleVercelStreamPrepare(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, map[string]any{
 		"session_id":       sessionID,
 		"lease_id":         leaseID,
-		"model":            model,
+		"model":            responseModel,
 		"final_prompt":     finalPrompt,
 		"thinking_enabled": thinkingEnabled,
 		"search_enabled":   searchEnabled,

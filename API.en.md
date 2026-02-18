@@ -28,7 +28,7 @@ This document describes the actual behavior of the current Go codebase.
 | Base URL | `http://localhost:5001` or your deployment domain |
 | Default Content-Type | `application/json` |
 | Health probes | `GET /healthz`, `GET /readyz` |
-| CORS | Enabled (`Access-Control-Allow-Origin: *`, allows `Content-Type`, `Authorization`) |
+| CORS | Enabled (`Access-Control-Allow-Origin: *`, allows `Content-Type`, `Authorization`, `X-API-Key`, `X-Ds2-Target-Account`, `X-Vercel-Protection-Bypass`) |
 
 ---
 
@@ -89,7 +89,11 @@ Two header formats accepted:
 | GET | `/healthz` | None | Liveness probe |
 | GET | `/readyz` | None | Readiness probe |
 | GET | `/v1/models` | None | OpenAI model list |
+| GET | `/v1/models/{id}` | None | OpenAI single-model query (alias accepted) |
 | POST | `/v1/chat/completions` | Business | OpenAI chat completions |
+| POST | `/v1/responses` | Business | OpenAI Responses API (stream/non-stream) |
+| GET | `/v1/responses/{response_id}` | Business | Query stored response (in-memory TTL) |
+| POST | `/v1/embeddings` | Business | OpenAI Embeddings API |
 | GET | `/anthropic/v1/models` | None | Claude model list |
 | POST | `/anthropic/v1/messages` | Business | Claude messages |
 | POST | `/anthropic/v1/messages/count_tokens` | Business | Claude token counting |
@@ -150,6 +154,15 @@ No auth required. Returns supported models.
 }
 ```
 
+### Model Alias Resolution
+
+For `chat` / `responses` / `embeddings`, DS2API follows a wide-input/strict-output policy:
+
+1. Match DeepSeek native model IDs first.
+2. Then match exact keys in `model_aliases`.
+3. If still unmatched, fall back by known family heuristics (`o*`, `gpt-*`, `claude-*`, etc.).
+4. If still unmatched, return `invalid_request_error`.
+
 ### `POST /v1/chat/completions`
 
 **Headers**:
@@ -163,7 +176,7 @@ Content-Type: application/json
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `model` | string | ✅ | `deepseek-chat` / `deepseek-reasoner` / `deepseek-chat-search` / `deepseek-reasoner-search` |
+| `model` | string | ✅ | DeepSeek native models + common aliases (`gpt-4o`, `gpt-5-codex`, `o3`, `claude-sonnet-4-5`, etc.) |
 | `messages` | array | ✅ | OpenAI-style messages |
 | `stream` | boolean | ❌ | Default `false` |
 | `tools` | array | ❌ | Function calling schema |
@@ -253,7 +266,63 @@ When `tools` is present, DS2API performs anti-leak handling:
 }
 ```
 
-**Stream**: DS2API buffers text first. If tool call detected → only structured `delta.tool_calls` (each with `index`); otherwise emits buffered text at once.
+**Stream**: Once high-confidence toolcall features are matched, DS2API emits `delta.tool_calls` immediately (without waiting for full JSON closure), then keeps sending argument deltas; confirmed raw tool JSON is never forwarded as `delta.content`.
+
+---
+
+### `GET /v1/models/{id}`
+
+No auth required. Alias values are accepted as path params (for example `gpt-4o`), and the returned object is the mapped DeepSeek model.
+
+### `POST /v1/responses`
+
+OpenAI Responses-style endpoint, accepting either `input` or `messages`.
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `model` | string | ✅ | Supports native models + alias mapping |
+| `input` | string/array/object | ❌ | One of `input` or `messages` is required |
+| `messages` | array | ❌ | One of `input` or `messages` is required |
+| `instructions` | string | ❌ | Prepended as a system message |
+| `stream` | boolean | ❌ | Default `false` |
+| `tools` | array | ❌ | Same tool detection/translation policy as chat |
+
+**Non-stream**: Returns a standard `response` object with an ID like `resp_xxx`, and stores it in in-memory TTL cache.
+
+**Stream (SSE)**: minimal event sequence:
+
+```text
+event: response.created
+data: {"type":"response.created","id":"resp_xxx","status":"in_progress",...}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","id":"resp_xxx","delta":"..."}
+
+event: response.output_tool_call.delta
+data: {"type":"response.output_tool_call.delta","id":"resp_xxx","tool_calls":[...]}
+
+event: response.completed
+data: {"type":"response.completed","response":{...}}
+
+data: [DONE]
+```
+
+### `GET /v1/responses/{response_id}`
+
+Business auth required. Fetches cached responses created by `POST /v1/responses`.
+
+> Backed by in-memory TTL store. Default TTL is `900s` (configurable via `responses.store_ttl_seconds`).
+
+### `POST /v1/embeddings`
+
+Business auth required. Returns OpenAI-compatible embeddings shape.
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `model` | string | ✅ | Supports native models + alias mapping |
+| `input` | string/array | ✅ | Supports string, string array, token array |
+
+> Requires `embeddings.provider`. Current supported values: `mock` / `deterministic` / `builtin`. If missing/unsupported, returns standard error shape with HTTP 501.
 
 ---
 
@@ -272,7 +341,10 @@ No auth required.
     {"id": "claude-sonnet-4-5", "object": "model", "created": 1715635200, "owned_by": "anthropic"},
     {"id": "claude-haiku-4-5", "object": "model", "created": 1715635200, "owned_by": "anthropic"},
     {"id": "claude-opus-4-6", "object": "model", "created": 1715635200, "owned_by": "anthropic"}
-  ]
+  ],
+  "first_id": "claude-opus-4-6",
+  "last_id": "claude-instant-1.0",
+  "has_more": false
 }
 ```
 
@@ -288,13 +360,15 @@ Content-Type: application/json
 anthropic-version: 2023-06-01
 ```
 
+> `anthropic-version` is optional; DS2API auto-fills `2023-06-01` when absent.
+
 **Request body**:
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `model` | string | ✅ | For example `claude-sonnet-4-5` / `claude-opus-4-6` / `claude-haiku-4-5` (compatible with `claude-3-5-haiku-latest`), plus historical Claude model IDs |
 | `messages` | array | ✅ | Claude-style messages |
-| `max_tokens` | number | ❌ | Not strictly enforced by upstream bridge |
+| `max_tokens` | number | ❌ | Auto-filled to `8192` when omitted; not strictly enforced by upstream bridge |
 | `stream` | boolean | ❌ | Default `false` |
 | `system` | string | ❌ | Optional system prompt |
 | `tools` | array | ❌ | Claude tool schema |
@@ -684,13 +758,20 @@ Or manual deploy required:
 
 ## Error Payloads
 
-Error formats vary by module:
+Compatible routes (`/v1/*`, `/anthropic/*`) use the same error envelope:
 
-| Module | Format |
-| --- | --- |
-| OpenAI routes | `{"error": {"message": "...", "type": "..."}}` |
-| Claude routes | `{"error": {"type": "...", "message": "..."}}` |
-| Admin routes | `{"detail": "..."}` |
+```json
+{
+  "error": {
+    "message": "...",
+    "type": "invalid_request_error",
+    "code": "invalid_request",
+    "param": null
+  }
+}
+```
+
+Admin routes keep `{"detail":"..."}`.
 
 Clients should handle HTTP status code plus `error` / `detail` fields.
 
@@ -729,6 +810,31 @@ curl http://localhost:5001/v1/chat/completions \
     "model": "deepseek-reasoner",
     "messages": [{"role": "user", "content": "Explain quantum entanglement"}],
     "stream": true
+  }'
+```
+
+### OpenAI Responses (Stream)
+
+```bash
+curl http://localhost:5001/v1/responses \
+  -H "Authorization: Bearer your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-5-codex",
+    "input": "Write a hello world in golang",
+    "stream": true
+  }'
+```
+
+### OpenAI Embeddings
+
+```bash
+curl http://localhost:5001/v1/embeddings \
+  -H "Authorization: Bearer your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o",
+    "input": ["first text", "second text"]
   }'
 ```
 

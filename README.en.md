@@ -54,15 +54,26 @@ flowchart LR
 
 | Capability | Details |
 | --- | --- |
-| OpenAI compatible | `GET /v1/models`, `POST /v1/chat/completions` (stream/non-stream) |
+| OpenAI compatible | `GET /v1/models`, `GET /v1/models/{id}`, `POST /v1/chat/completions`, `POST /v1/responses`, `GET /v1/responses/{response_id}`, `POST /v1/embeddings` |
 | Claude compatible | `GET /anthropic/v1/models`, `POST /anthropic/v1/messages`, `POST /anthropic/v1/messages/count_tokens` |
 | Multi-account rotation | Auto token refresh, email/mobile dual login |
 | Concurrency control | Per-account in-flight limit + waiting queue, dynamic recommended concurrency |
 | DeepSeek PoW | WASM solving via `wazero`, no external Node.js dependency |
-| Tool Calling | Anti-leak handling: auto buffer, detect, structured output |
+| Tool Calling | Anti-leak handling: non-code-block feature match, early `delta.tool_calls`, structured incremental output |
 | Admin API | Config management, account testing/batch test, import/export, Vercel sync |
 | WebUI Admin Panel | SPA at `/admin` (bilingual Chinese/English, dark mode) |
 | Health Probes | `GET /healthz` (liveness), `GET /readyz` (readiness) |
+
+## Platform Compatibility Matrix
+
+| Tier | Platform | Status |
+| --- | --- | --- |
+| P0 | Codex CLI/SDK (`wire_api=chat` / `wire_api=responses`) | ✅ |
+| P0 | OpenAI SDK (JS/Python, chat + responses) | ✅ |
+| P0 | Vercel AI SDK (openai-compatible) | ✅ |
+| P0 | Anthropic SDK (messages) | ✅ |
+| P1 | LangChain / LlamaIndex / OpenWebUI (OpenAI-compatible integration) | ✅ |
+| P2 | MCP standalone bridge | Planned |
 
 ## Model Support
 
@@ -196,6 +207,7 @@ cp opencode.json.example opencode.json
 3. Start OpenCode CLI in the project directory (run `opencode` using your installed method).
 
 > Recommended: use the OpenAI-compatible path (`/v1/*`) via `@ai-sdk/openai-compatible` as shown in the example.
+> If your client supports `wire_api`, test both `responses` and `chat`; DS2API supports both paths.
 
 ## Configuration
 
@@ -216,6 +228,24 @@ cp opencode.json.example opencode.json
       "token": ""
     }
   ],
+  "model_aliases": {
+    "gpt-4o": "deepseek-chat",
+    "gpt-5-codex": "deepseek-reasoner",
+    "o3": "deepseek-reasoner"
+  },
+  "compat": {
+    "wide_input_strict_output": true
+  },
+  "toolcall": {
+    "mode": "feature_match",
+    "early_emit_confidence": "high"
+  },
+  "responses": {
+    "store_ttl_seconds": 900
+  },
+  "embeddings": {
+    "provider": "deterministic"
+  },
   "claude_model_mapping": {
     "fast": "deepseek-chat",
     "slow": "deepseek-reasoner"
@@ -226,6 +256,11 @@ cp opencode.json.example opencode.json
 - `keys`: API access keys; clients authenticate via `Authorization: Bearer <key>`
 - `accounts`: DeepSeek account list, supports `email` or `mobile` login
 - `token`: Leave empty for auto-login on first request; or pre-fill an existing token
+- `model_aliases`: Map common model names (GPT/Codex/Claude) to DeepSeek models
+- `compat.wide_input_strict_output`: Keep `true` (current default policy)
+- `toolcall`: Fixed to feature matching + high-confidence early emit
+- `responses.store_ttl_seconds`: In-memory TTL for `/v1/responses/{id}`
+- `embeddings.provider`: Embeddings provider (`deterministic/mock/builtin` built-in)
 - `claude_model_mapping`: Maps `fast`/`slow` suffixes to corresponding DeepSeek models
 
 ### Environment Variables
@@ -281,10 +316,10 @@ Queue limit = DS2API_ACCOUNT_MAX_QUEUE (default = recommended concurrency)
 
 When `tools` is present in the request, DS2API performs anti-leak handling:
 
-1. With `stream=true`, DS2API **buffers** text deltas first
-2. If a tool call is detected → only structured `tool_calls` are emitted, raw JSON is not leaked
-3. If no tool call → buffered text is emitted at once
-4. Parser supports mixed text, fenced JSON, and `function.arguments` payloads
+1. Toolcall feature matching is enabled only in **non-code-block context** (fenced examples are ignored)
+2. Once high-confidence features are matched (`tool_calls` + `name` + `arguments/input` start), `delta.tool_calls` is emitted immediately
+3. Confirmed toolcall JSON fragments are never leaked into `delta.content`
+4. Natural language before/after toolcalls keeps original order, with incremental argument output supported
 
 ## Project Structure
 

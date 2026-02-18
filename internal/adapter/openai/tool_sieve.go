@@ -7,17 +7,16 @@ import (
 )
 
 type toolStreamSieveState struct {
-	pending           strings.Builder
-	capture           strings.Builder
-	capturing         bool
-	hasMeaningfulText bool
-	recentTextTail    string
-	toolNameSent      bool
-	toolName          string
-	toolArgsStart     int
-	toolArgsSent      int
-	toolArgsString    bool
-	toolArgsDone      bool
+	pending        strings.Builder
+	capture        strings.Builder
+	capturing      bool
+	recentTextTail string
+	toolNameSent   bool
+	toolName       string
+	toolArgsStart  int
+	toolArgsSent   int
+	toolArgsString bool
+	toolArgsDone   bool
 }
 
 type toolStreamEvent struct {
@@ -197,14 +196,22 @@ func findToolSegmentStart(s string) int {
 		return -1
 	}
 	lower := strings.ToLower(s)
-	keyIdx := strings.Index(lower, "tool_calls")
-	if keyIdx < 0 {
-		return -1
+	offset := 0
+	for {
+		keyRel := strings.Index(lower[offset:], "tool_calls")
+		if keyRel < 0 {
+			return -1
+		}
+		keyIdx := offset + keyRel
+		start := strings.LastIndex(s[:keyIdx], "{")
+		if start < 0 {
+			start = keyIdx
+		}
+		if !insideCodeFence(s[:start]) {
+			return start
+		}
+		offset = keyIdx + len("tool_calls")
 	}
-	if start := strings.LastIndex(s[:keyIdx], "{"); start >= 0 {
-		return start
-	}
-	return keyIdx
 }
 
 func consumeToolCapture(state *toolStreamSieveState, toolNames []string) (prefix string, calls []util.ParsedToolCall, suffix string, ready bool) {
@@ -227,7 +234,7 @@ func consumeToolCapture(state *toolStreamSieveState, toolNames []string) (prefix
 	}
 	prefixPart := captured[:start]
 	suffixPart := captured[end:]
-	if !state.toolNameSent && (strings.TrimSpace(prefixPart) != "" || looksLikeToolExampleContext(state.recentTextTail) || looksLikeToolExampleContext(suffixPart)) {
+	if insideCodeFence(state.recentTextTail + prefixPart) {
 		return captured, nil, "", true
 	}
 	parsed := util.ParseStandaloneToolCalls(obj, toolNames)
@@ -293,16 +300,16 @@ func buildIncrementalToolDeltas(state *toolStreamSieveState) []toolCallDelta {
 	if captured == "" {
 		return nil
 	}
-	if looksLikeToolExampleContext(state.recentTextTail) {
-		return nil
-	}
 	lower := strings.ToLower(captured)
 	keyIdx := strings.Index(lower, "tool_calls")
 	if keyIdx < 0 {
 		return nil
 	}
 	start := strings.LastIndex(captured[:keyIdx], "{")
-	if start < 0 || strings.TrimSpace(captured[:start]) != "" {
+	if start < 0 {
+		return nil
+	}
+	if insideCodeFence(state.recentTextTail + captured[:start]) {
 		return nil
 	}
 	callStart, ok := findFirstToolCallObjectStart(captured, keyIdx)
@@ -612,7 +619,6 @@ func (s *toolStreamSieveState) noteText(content string) {
 	if strings.TrimSpace(content) == "" {
 		return
 	}
-	s.hasMeaningfulText = true
 	s.recentTextTail = appendTail(s.recentTextTail, content, toolSieveContextTailLimit)
 }
 
@@ -628,25 +634,12 @@ func appendTail(prev, next string, max int) string {
 }
 
 func looksLikeToolExampleContext(text string) bool {
-	t := strings.ToLower(strings.TrimSpace(text))
-	if t == "" {
+	return insideCodeFence(text)
+}
+
+func insideCodeFence(text string) bool {
+	if text == "" {
 		return false
 	}
-	cues := []string{
-		"示例",
-		"例子",
-		"for example",
-		"example",
-		"demo",
-		"请勿执行",
-		"不要执行",
-		"do not execute",
-		"```",
-	}
-	for _, cue := range cues {
-		if strings.Contains(t, cue) {
-			return true
-		}
-	}
-	return false
+	return strings.Count(text, "```")%2 == 1
 }

@@ -1,5 +1,7 @@
 package config
 
+import "strings"
+
 type ModelInfo struct {
 	ID         string `json:"id"`
 	Object     string `json:"object"`
@@ -71,6 +73,91 @@ func GetModelConfig(model string) (thinking bool, search bool, ok bool) {
 	}
 }
 
+func IsSupportedDeepSeekModel(model string) bool {
+	_, _, ok := GetModelConfig(model)
+	return ok
+}
+
+func DefaultModelAliases() map[string]string {
+	return map[string]string{
+		"gpt-4o":                 "deepseek-chat",
+		"gpt-4.1":                "deepseek-chat",
+		"gpt-4.1-mini":           "deepseek-chat",
+		"gpt-4.1-nano":           "deepseek-chat",
+		"gpt-5":                  "deepseek-chat",
+		"gpt-5-mini":             "deepseek-chat",
+		"gpt-5-codex":            "deepseek-reasoner",
+		"o1":                     "deepseek-reasoner",
+		"o1-mini":                "deepseek-reasoner",
+		"o3":                     "deepseek-reasoner",
+		"o3-mini":                "deepseek-reasoner",
+		"claude-sonnet-4-5":      "deepseek-chat",
+		"claude-haiku-4-5":       "deepseek-chat",
+		"claude-opus-4-6":        "deepseek-reasoner",
+		"claude-3-5-sonnet":      "deepseek-chat",
+		"claude-3-5-haiku":       "deepseek-chat",
+		"claude-3-opus":          "deepseek-reasoner",
+		"gemini-2.5-pro":         "deepseek-chat",
+		"gemini-2.5-flash":       "deepseek-chat",
+		"llama-3.1-70b-instruct": "deepseek-chat",
+		"qwen-max":               "deepseek-chat",
+	}
+}
+
+func ResolveModel(store *Store, requested string) (string, bool) {
+	model := lower(strings.TrimSpace(requested))
+	if model == "" {
+		return "", false
+	}
+	if IsSupportedDeepSeekModel(model) {
+		return model, true
+	}
+	aliases := DefaultModelAliases()
+	if store != nil {
+		for k, v := range store.ModelAliases() {
+			aliases[lower(strings.TrimSpace(k))] = lower(strings.TrimSpace(v))
+		}
+	}
+	if mapped, ok := aliases[model]; ok && IsSupportedDeepSeekModel(mapped) {
+		return mapped, true
+	}
+	if strings.HasPrefix(model, "deepseek-") {
+		return "", false
+	}
+
+	knownFamily := false
+	for _, prefix := range []string{
+		"gpt-", "o1", "o3", "claude-", "gemini-", "llama-", "qwen-", "mistral-", "command-",
+	} {
+		if strings.HasPrefix(model, prefix) {
+			knownFamily = true
+			break
+		}
+	}
+	if !knownFamily {
+		return "", false
+	}
+
+	useReasoner := strings.Contains(model, "reason") ||
+		strings.Contains(model, "reasoner") ||
+		strings.HasPrefix(model, "o1") ||
+		strings.HasPrefix(model, "o3") ||
+		strings.Contains(model, "opus") ||
+		strings.Contains(model, "r1")
+	useSearch := strings.Contains(model, "search")
+
+	switch {
+	case useReasoner && useSearch:
+		return "deepseek-reasoner-search", true
+	case useReasoner:
+		return "deepseek-reasoner", true
+	case useSearch:
+		return "deepseek-chat-search", true
+	default:
+		return "deepseek-chat", true
+	}
+}
+
 func lower(s string) string {
 	b := []byte(s)
 	for i, c := range b {
@@ -85,6 +172,28 @@ func OpenAIModelsResponse() map[string]any {
 	return map[string]any{"object": "list", "data": DeepSeekModels}
 }
 
+func OpenAIModelByID(store *Store, id string) (ModelInfo, bool) {
+	canonical, ok := ResolveModel(store, id)
+	if !ok {
+		return ModelInfo{}, false
+	}
+	for _, model := range DeepSeekModels {
+		if model.ID == canonical {
+			return model, true
+		}
+	}
+	return ModelInfo{}, false
+}
+
 func ClaudeModelsResponse() map[string]any {
-	return map[string]any{"object": "list", "data": ClaudeModels}
+	resp := map[string]any{"object": "list", "data": ClaudeModels}
+	if len(ClaudeModels) > 0 {
+		resp["first_id"] = ClaudeModels[0].ID
+		resp["last_id"] = ClaudeModels[len(ClaudeModels)-1].ID
+	} else {
+		resp["first_id"] = nil
+		resp["last_id"] = nil
+	}
+	resp["has_more"] = false
+	return resp
 }

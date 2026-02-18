@@ -7,7 +7,7 @@ const {
   createToolSieveState,
   processToolSieveChunk,
   flushToolSieve,
-  parseStandaloneToolCalls,
+  parseToolCalls,
   formatOpenAIStreamToolCalls,
 } = require('./helpers/stream-tool-sieve');
 
@@ -199,7 +199,7 @@ module.exports = async function handler(req, res) {
         await releaseLease();
         return;
       }
-      const detected = parseStandaloneToolCalls(outputText, toolNames);
+      const detected = parseToolCalls(outputText, toolNames);
       if (detected.length > 0 && !toolCallsEmitted) {
         toolCallsEmitted = true;
         sendDeltaFrame({ tool_calls: formatOpenAIStreamToolCalls(detected) });

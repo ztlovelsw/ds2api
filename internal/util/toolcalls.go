@@ -10,6 +10,7 @@ import (
 
 var toolCallPattern = regexp.MustCompile(`\{\s*["']tool_calls["']\s*:\s*\[(.*?)\]\s*\}`)
 var fencedJSONPattern = regexp.MustCompile("(?s)```(?:json)?\\s*(.*?)\\s*```")
+var fencedBlockPattern = regexp.MustCompile("(?s)```.*?```")
 
 type ParsedToolCall struct {
 	Name  string         `json:"name"`
@@ -17,6 +18,10 @@ type ParsedToolCall struct {
 }
 
 func ParseToolCalls(text string, availableToolNames []string) []ParsedToolCall {
+	if strings.TrimSpace(text) == "" {
+		return nil
+	}
+	text = stripFencedCodeBlocks(text)
 	if strings.TrimSpace(text) == "" {
 		return nil
 	}
@@ -45,11 +50,6 @@ func ParseStandaloneToolCalls(text string, availableToolNames []string) []Parsed
 		return nil
 	}
 	candidates := []string{trimmed}
-	if strings.HasPrefix(trimmed, "```") && strings.HasSuffix(trimmed, "```") {
-		if m := fencedJSONPattern.FindStringSubmatch(trimmed); len(m) >= 2 {
-			candidates = append(candidates, strings.TrimSpace(m[1]))
-		}
-	}
 	for _, candidate := range candidates {
 		candidate = strings.TrimSpace(candidate)
 		if candidate == "" {
@@ -321,23 +321,14 @@ func looksLikeToolExampleContext(text string) bool {
 	if t == "" {
 		return false
 	}
-	cues := []string{
-		"```",
-		"示例",
-		"例子",
-		"for example",
-		"example",
-		"demo",
-		"请勿执行",
-		"不要执行",
-		"do not execute",
+	return strings.Contains(t, "```")
+}
+
+func stripFencedCodeBlocks(text string) string {
+	if strings.TrimSpace(text) == "" {
+		return ""
 	}
-	for _, cue := range cues {
-		if strings.Contains(t, cue) {
-			return true
-		}
-	}
-	return false
+	return fencedBlockPattern.ReplaceAllString(text, " ")
 }
 
 func FormatOpenAIToolCalls(calls []ParsedToolCall) []map[string]any {

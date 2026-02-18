@@ -69,9 +69,7 @@ test('parseToolCalls supports fenced json and function.arguments string payload'
     '```',
   ].join('\n');
   const calls = parseToolCalls(text, ['read_file']);
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].name, 'read_file');
-  assert.deepEqual(calls[0].input, { path: 'README.md' });
+  assert.equal(calls.length, 0);
 });
 
 test('parseStandaloneToolCalls only matches standalone payload and ignores mixed prose', () => {

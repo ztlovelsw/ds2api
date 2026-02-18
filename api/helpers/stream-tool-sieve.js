@@ -28,7 +28,6 @@ function createToolSieveState() {
     pending: '',
     capture: '',
     capturing: false,
-    hasMeaningfulText: false,
     recentTextTail: '',
     toolNameSent: false,
     toolName: '',
@@ -192,12 +191,21 @@ function findToolSegmentStart(s) {
     return -1;
   }
   const lower = s.toLowerCase();
-  const keyIdx = lower.indexOf('tool_calls');
-  if (keyIdx < 0) {
-    return -1;
+  let offset = 0;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const keyRel = lower.indexOf('tool_calls', offset);
+    if (keyRel < 0) {
+      return -1;
+    }
+    const keyIdx = keyRel;
+    const start = s.slice(0, keyIdx).lastIndexOf('{');
+    const candidateStart = start >= 0 ? start : keyIdx;
+    if (!insideCodeFence(s.slice(0, candidateStart))) {
+      return candidateStart;
+    }
+    offset = keyIdx + 'tool_calls'.length;
   }
-  const start = s.slice(0, keyIdx).lastIndexOf('{');
-  return start >= 0 ? start : keyIdx;
 }
 
 function consumeToolCapture(state, toolNames) {
@@ -220,7 +228,7 @@ function consumeToolCapture(state, toolNames) {
   }
   const prefixPart = captured.slice(0, start);
   const suffixPart = captured.slice(obj.end);
-  if (!state.toolNameSent && (hasMeaningfulText(prefixPart) || looksLikeToolExampleContext(state.recentTextTail) || looksLikeToolExampleContext(suffixPart))) {
+  if (insideCodeFence((state.recentTextTail || '') + prefixPart)) {
     return {
       ready: true,
       prefix: captured,
@@ -283,7 +291,10 @@ function buildIncrementalToolDeltas(state) {
     return [];
   }
   const start = captured.slice(0, keyIdx).lastIndexOf('{');
-  if (start < 0 || hasMeaningfulText(captured.slice(0, start))) {
+  if (start < 0) {
+    return [];
+  }
+  if (insideCodeFence((state.recentTextTail || '') + captured.slice(0, start))) {
     return [];
   }
   const callStart = findFirstToolCallObjectStart(captured, keyIdx);
@@ -621,7 +632,11 @@ function parseToolCalls(text, toolNames) {
   if (!toStringSafe(text)) {
     return [];
   }
-  const candidates = buildToolCallCandidates(text);
+  const sanitized = stripFencedCodeBlocks(text);
+  if (!toStringSafe(sanitized)) {
+    return [];
+  }
+  const candidates = buildToolCallCandidates(sanitized);
   let parsed = [];
   for (const c of candidates) {
     parsed = parseToolCallsPayload(c);
@@ -635,9 +650,20 @@ function parseToolCalls(text, toolNames) {
   return filterToolCalls(parsed, toolNames);
 }
 
+function stripFencedCodeBlocks(text) {
+  const t = typeof text === 'string' ? text : '';
+  if (!t) {
+    return '';
+  }
+  return t.replace(/```[\s\S]*?```/g, ' ');
+}
+
 function parseStandaloneToolCalls(text, toolNames) {
   const trimmed = toStringSafe(text);
   if (!trimmed) {
+    return [];
+  }
+  if ((trimmed.startsWith('```') && trimmed.endsWith('```')) || trimmed.includes('```')) {
     return [];
   }
   if (looksLikeToolExampleContext(trimmed)) {
@@ -852,7 +878,6 @@ function noteText(state, text) {
   if (!state || !hasMeaningfulText(text)) {
     return;
   }
-  state.hasMeaningfulText = true;
   state.recentTextTail = appendTail(state.recentTextTail, text, TOOL_SIEVE_CONTEXT_TAIL_LIMIT);
 }
 
@@ -870,22 +895,16 @@ function appendTail(prev, next, max) {
 }
 
 function looksLikeToolExampleContext(text) {
-  const t = toStringSafe(text).toLowerCase();
+  return insideCodeFence(text);
+}
+
+function insideCodeFence(text) {
+  const t = typeof text === 'string' ? text : '';
   if (!t) {
     return false;
   }
-  const cues = [
-    '示例',
-    '例子',
-    'for example',
-    'example',
-    'demo',
-    '请勿执行',
-    '不要执行',
-    'do not execute',
-    '```',
-  ];
-  return cues.some((cue) => t.includes(cue));
+  const ticks = (t.match(/```/g) || []).length;
+  return ticks % 2 === 1;
 }
 
 function hasMeaningfulText(text) {

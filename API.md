@@ -28,7 +28,7 @@
 | Base URL | `http://localhost:5001` 或你的部署域名 |
 | 默认 Content-Type | `application/json` |
 | 健康检查 | `GET /healthz`、`GET /readyz` |
-| CORS | 已启用（`Access-Control-Allow-Origin: *`，允许 `Content-Type`, `Authorization`） |
+| CORS | 已启用（`Access-Control-Allow-Origin: *`，允许 `Content-Type`, `Authorization`, `X-API-Key`, `X-Ds2-Target-Account`, `X-Vercel-Protection-Bypass`） |
 
 ---
 
@@ -89,7 +89,11 @@ Vercel 一键部署可先只填 `DS2API_ADMIN_KEY`，部署后在 `/admin` 导�
 | GET | `/healthz` | 无 | 存活探针 |
 | GET | `/readyz` | 无 | 就绪探针 |
 | GET | `/v1/models` | 无 | OpenAI 模型列表 |
+| GET | `/v1/models/{id}` | 无 | OpenAI 单模型查询（支持 alias 入参） |
 | POST | `/v1/chat/completions` | 业务 | OpenAI 对话补全 |
+| POST | `/v1/responses` | 业务 | OpenAI Responses 接口（流式/非流式） |
+| GET | `/v1/responses/{response_id}` | 业务 | 查询已生成 response（内存 TTL） |
+| POST | `/v1/embeddings` | 业务 | OpenAI Embeddings 接口 |
 | GET | `/anthropic/v1/models` | 无 | Claude 模型列表 |
 | POST | `/anthropic/v1/messages` | 业务 | Claude 消息接口 |
 | POST | `/anthropic/v1/messages/count_tokens` | 业务 | Claude token 计数 |
@@ -150,6 +154,15 @@ Vercel 一键部署可先只填 `DS2API_ADMIN_KEY`，部署后在 `/admin` 导�
 }
 ```
 
+### 模型 alias 解析策略
+
+对 `chat` / `responses` / `embeddings` 的 `model` 字段采用“宽进严出”：
+
+1. 先匹配 DeepSeek 原生模型。
+2. 再匹配 `model_aliases` 精确映射。
+3. 未命中时按模型家族规则回退（如 `o*`、`gpt-*`、`claude-*`）。
+4. 仍未命中则返回 `invalid_request_error`。
+
 ### `POST /v1/chat/completions`
 
 **请求头**：
@@ -163,7 +176,7 @@ Content-Type: application/json
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `model` | string | ✅ | `deepseek-chat` / `deepseek-reasoner` / `deepseek-chat-search` / `deepseek-reasoner-search` |
+| `model` | string | ✅ | 支持 DeepSeek 原生模型 + 常见 alias（如 `gpt-4o`、`gpt-5-codex`、`o3`、`claude-sonnet-4-5`） |
 | `messages` | array | ✅ | OpenAI 风格消息数组 |
 | `stream` | boolean | ❌ | 默认 `false` |
 | `tools` | array | ❌ | Function Calling 定义 |
@@ -253,7 +266,63 @@ data: [DONE]
 }
 ```
 
-**流式**：先缓冲正文片段。识别到工具调用 → 仅输出结构化 `delta.tool_calls`（每个 tool call 带 `index`）；否则一次性输出普通文本。
+**流式**：命中高置信特征后立即输出 `delta.tool_calls`（不等待完整 JSON 闭合），并持续发送 arguments 增量；已确认的 toolcall 原始 JSON 不会回流到 `delta.content`。
+
+---
+
+### `GET /v1/models/{id}`
+
+无需鉴权。入参支持 alias（例如 `gpt-4o`），返回的是映射后的 DeepSeek 模型对象。
+
+### `POST /v1/responses`
+
+OpenAI Responses 风格接口，兼容 `input` 或 `messages`。
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `model` | string | ✅ | 支持原生模型 + alias 自动映射 |
+| `input` | string/array/object | ❌ | 与 `messages` 二选一 |
+| `messages` | array | ❌ | 与 `input` 二选一 |
+| `instructions` | string | ❌ | 自动前置为 system 消息 |
+| `stream` | boolean | ❌ | 默认 `false` |
+| `tools` | array | ❌ | 与 chat 同样的工具识别与转译策略 |
+
+**非流式响应**：返回标准 `response` 对象，`id` 形如 `resp_xxx`，并写入内存 TTL 存储。
+
+**流式响应（SSE）**：最小事件序列如下。
+
+```text
+event: response.created
+data: {"type":"response.created","id":"resp_xxx","status":"in_progress",...}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","id":"resp_xxx","delta":"..."}
+
+event: response.output_tool_call.delta
+data: {"type":"response.output_tool_call.delta","id":"resp_xxx","tool_calls":[...]}
+
+event: response.completed
+data: {"type":"response.completed","response":{...}}
+
+data: [DONE]
+```
+
+### `GET /v1/responses/{response_id}`
+
+需要业务鉴权。查询 `POST /v1/responses` 生成并缓存的 response 对象。
+
+> 当前为内存 TTL 存储，默认过期时间 `900s`（可用 `responses.store_ttl_seconds` 调整）。
+
+### `POST /v1/embeddings`
+
+需要业务鉴权。返回 OpenAI Embeddings 兼容结构。
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `model` | string | ✅ | 支持原生模型 + alias 自动映射 |
+| `input` | string/array | ✅ | 支持字符串、字符串数组、token 数组 |
+
+> 需配置 `embeddings.provider`。当前支持：`mock` / `deterministic` / `builtin`。未配置或不支持时返回标准错误结构（HTTP 501）。
 
 ---
 
@@ -272,7 +341,10 @@ data: [DONE]
     {"id": "claude-sonnet-4-5", "object": "model", "created": 1715635200, "owned_by": "anthropic"},
     {"id": "claude-haiku-4-5", "object": "model", "created": 1715635200, "owned_by": "anthropic"},
     {"id": "claude-opus-4-6", "object": "model", "created": 1715635200, "owned_by": "anthropic"}
-  ]
+  ],
+  "first_id": "claude-opus-4-6",
+  "last_id": "claude-instant-1.0",
+  "has_more": false
 }
 ```
 
@@ -288,13 +360,15 @@ Content-Type: application/json
 anthropic-version: 2023-06-01
 ```
 
+> `anthropic-version` 可省略，服务端会自动补为 `2023-06-01`。
+
 **请求体**：
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `model` | string | ✅ | 例如 `claude-sonnet-4-5` / `claude-opus-4-6` / `claude-haiku-4-5`（兼容 `claude-3-5-haiku-latest`），并支持历史 Claude 模型 ID |
 | `messages` | array | ✅ | Claude 风格消息数组 |
-| `max_tokens` | number | ❌ | 当前实现不会硬性截断上游输出 |
+| `max_tokens` | number | ❌ | 缺省自动补 `8192`；当前实现不会硬性截断上游输出 |
 | `stream` | boolean | ❌ | 默认 `false` |
 | `system` | string | ❌ | 可选系统提示 |
 | `tools` | array | ❌ | Claude tool 定义 |
@@ -684,13 +758,20 @@ data: {"type":"message_stop"}
 
 ## 错误响应格式
 
-不同模块的错误格式略有差异：
+兼容路由（`/v1/*`、`/anthropic/*`）统一使用以下结构：
 
-| 模块 | 格式 |
-| --- | --- |
-| OpenAI 接口 | `{"error": {"message": "...", "type": "..."}}` |
-| Claude 接口 | `{"error": {"type": "...", "message": "..."}}` |
-| Admin 接口 | `{"detail": "..."}` |
+```json
+{
+  "error": {
+    "message": "...",
+    "type": "invalid_request_error",
+    "code": "invalid_request",
+    "param": null
+  }
+}
+```
+
+Admin 接口保持 `{"detail":"..."}`。
 
 建议客户端处理逻辑：检查 HTTP 状态码 + 解析 `error` 或 `detail` 字段。
 
@@ -729,6 +810,31 @@ curl http://localhost:5001/v1/chat/completions \
     "model": "deepseek-reasoner",
     "messages": [{"role": "user", "content": "解释一下量子纠缠"}],
     "stream": true
+  }'
+```
+
+### OpenAI Responses（流式）
+
+```bash
+curl http://localhost:5001/v1/responses \
+  -H "Authorization: Bearer your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-5-codex",
+    "input": "写一个 golang 的 hello world",
+    "stream": true
+  }'
+```
+
+### OpenAI Embeddings
+
+```bash
+curl http://localhost:5001/v1/embeddings \
+  -H "Authorization: Bearer your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o",
+    "input": ["第一段文本", "第二段文本"]
   }'
 ```
 

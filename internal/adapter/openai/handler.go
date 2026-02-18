@@ -31,6 +31,8 @@ type Handler struct {
 
 	leaseMu      sync.Mutex
 	streamLeases map[string]streamLease
+	responsesMu  sync.Mutex
+	responses    *responseStore
 }
 
 type streamLease struct {
@@ -40,11 +42,25 @@ type streamLease struct {
 
 func RegisterRoutes(r chi.Router, h *Handler) {
 	r.Get("/v1/models", h.ListModels)
+	r.Get("/v1/models/{model_id}", h.GetModel)
 	r.Post("/v1/chat/completions", h.ChatCompletions)
+	r.Post("/v1/responses", h.Responses)
+	r.Get("/v1/responses/{response_id}", h.GetResponseByID)
+	r.Post("/v1/embeddings", h.Embeddings)
 }
 
 func (h *Handler) ListModels(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, config.OpenAIModelsResponse())
+}
+
+func (h *Handler) GetModel(w http.ResponseWriter, r *http.Request) {
+	modelID := strings.TrimSpace(chi.URLParam(r, "model_id"))
+	model, ok := config.OpenAIModelByID(h.Store, modelID)
+	if !ok {
+		writeOpenAIError(w, http.StatusNotFound, "Model not found.")
+		return
+	}
+	writeJSON(w, http.StatusOK, model)
 }
 
 func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
@@ -81,10 +97,15 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		writeOpenAIError(w, http.StatusBadRequest, "Request must include 'model' and 'messages'.")
 		return
 	}
-	thinkingEnabled, searchEnabled, ok := config.GetModelConfig(model)
+	resolvedModel, ok := config.ResolveModel(h.Store, model)
 	if !ok {
-		writeOpenAIError(w, http.StatusServiceUnavailable, fmt.Sprintf("Model '%s' is not available.", model))
+		writeOpenAIError(w, http.StatusBadRequest, fmt.Sprintf("Model '%s' is not available.", model))
 		return
+	}
+	thinkingEnabled, searchEnabled, _ := config.GetModelConfig(resolvedModel)
+	responseModel := strings.TrimSpace(model)
+	if responseModel == "" {
+		responseModel = resolvedModel
 	}
 
 	finalPrompt, toolNames := buildOpenAIFinalPrompt(messagesRaw, req["tools"])
@@ -111,16 +132,17 @@ func (h *Handler) ChatCompletions(w http.ResponseWriter, r *http.Request) {
 		"thinking_enabled":  thinkingEnabled,
 		"search_enabled":    searchEnabled,
 	}
+	applyOpenAIChatPassThrough(req, payload)
 	resp, err := h.DS.CallCompletion(r.Context(), a, payload, pow, 3)
 	if err != nil {
 		writeOpenAIError(w, http.StatusInternalServerError, "Failed to get completion.")
 		return
 	}
 	if util.ToBool(req["stream"]) {
-		h.handleStream(w, r, resp, sessionID, model, finalPrompt, thinkingEnabled, searchEnabled, toolNames)
+		h.handleStream(w, r, resp, sessionID, responseModel, finalPrompt, thinkingEnabled, searchEnabled, toolNames)
 		return
 	}
-	h.handleNonStream(w, r.Context(), resp, sessionID, model, finalPrompt, thinkingEnabled, toolNames)
+	h.handleNonStream(w, r.Context(), resp, sessionID, responseModel, finalPrompt, thinkingEnabled, toolNames)
 }
 
 func (h *Handler) handleNonStream(w http.ResponseWriter, ctx context.Context, resp *http.Response, completionID, model, finalPrompt string, thinkingEnabled bool, toolNames []string) {
@@ -135,7 +157,7 @@ func (h *Handler) handleNonStream(w http.ResponseWriter, ctx context.Context, re
 
 	finalThinking := result.Thinking
 	finalText := result.Text
-	detected := util.ParseStandaloneToolCalls(finalText, toolNames)
+	detected := util.ParseToolCalls(finalText, toolNames)
 	finishReason := "stop"
 	messageObj := map[string]any{"role": "assistant", "content": finalText}
 	if thinkingEnabled && finalThinking != "" {
@@ -222,7 +244,7 @@ func (h *Handler) handleStream(w http.ResponseWriter, r *http.Request, resp *htt
 	finalize := func(finishReason string) {
 		finalThinking := thinking.String()
 		finalText := text.String()
-		detected := util.ParseStandaloneToolCalls(finalText, toolNames)
+		detected := util.ParseToolCalls(finalText, toolNames)
 		if len(detected) > 0 && !toolCallsEmitted {
 			finishReason = "tool_calls"
 			delta := map[string]any{
@@ -497,6 +519,8 @@ func writeOpenAIError(w http.ResponseWriter, status int, message string) {
 		"error": map[string]any{
 			"message": message,
 			"type":    openAIErrorType(status),
+			"code":    openAIErrorCode(status),
+			"param":   nil,
 		},
 	})
 }
@@ -518,5 +542,43 @@ func openAIErrorType(status int) string {
 			return "api_error"
 		}
 		return "invalid_request_error"
+	}
+}
+
+func openAIErrorCode(status int) string {
+	switch status {
+	case http.StatusBadRequest:
+		return "invalid_request"
+	case http.StatusUnauthorized:
+		return "authentication_failed"
+	case http.StatusForbidden:
+		return "forbidden"
+	case http.StatusTooManyRequests:
+		return "rate_limit_exceeded"
+	case http.StatusNotFound:
+		return "not_found"
+	case http.StatusServiceUnavailable:
+		return "service_unavailable"
+	default:
+		if status >= 500 {
+			return "internal_error"
+		}
+		return "invalid_request"
+	}
+}
+
+func applyOpenAIChatPassThrough(req map[string]any, payload map[string]any) {
+	for _, k := range []string{
+		"temperature",
+		"top_p",
+		"max_tokens",
+		"max_completion_tokens",
+		"presence_penalty",
+		"frequency_penalty",
+		"stop",
+	} {
+		if v, ok := req[k]; ok {
+			payload[k] = v
+		}
 	}
 }

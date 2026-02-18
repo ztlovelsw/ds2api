@@ -24,5 +24,27 @@
       "password": "your-password-3",
       "token": ""
     }
-  ]
+  ],
+  "model_aliases": {
+    "gpt-4o": "deepseek-chat",
+    "gpt-5-codex": "deepseek-reasoner",
+    "o3": "deepseek-reasoner"
+  },
+  "compat": {
+    "wide_input_strict_output": true
+  },
+  "toolcall": {
+    "mode": "feature_match",
+    "early_emit_confidence": "high"
+  },
+  "responses": {
+    "store_ttl_seconds": 900
+  },
+  "embeddings": {
+    "provider": "deterministic"
+  },
+  "claude_model_mapping": {
+    "fast": "deepseek-chat",
+    "slow": "deepseek-reasoner"
+  }
 }

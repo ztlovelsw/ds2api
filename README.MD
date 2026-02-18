@@ -54,15 +54,26 @@ flowchart LR
 
 | 能力 | 说明 |
 | --- | --- |
-| OpenAI 兼容 | `GET /v1/models`、`POST /v1/chat/completions`（流式/非流式） |
+| OpenAI 兼容 | `GET /v1/models`、`GET /v1/models/{id}`、`POST /v1/chat/completions`、`POST /v1/responses`、`GET /v1/responses/{response_id}`、`POST /v1/embeddings` |
 | Claude 兼容 | `GET /anthropic/v1/models`、`POST /anthropic/v1/messages`、`POST /anthropic/v1/messages/count_tokens` |
 | 多账号轮询 | 自动 token 刷新、邮箱/手机号双登录方式 |
 | 并发队列控制 | 每账号 in-flight 上限 + 等待队列，动态计算建议并发值 |
 | DeepSeek PoW | WASM 计算（`wazero`），无需外部 Node.js 依赖 |
-| Tool Calling | 防泄漏处理：自动缓冲、识别、结构化输出 |
+| Tool Calling | 防泄漏处理：非代码块高置信特征识别、`delta.tool_calls` 早发、结构化增量输出 |
 | Admin API | 配置管理、账号测试 / 批量测试、导入导出、Vercel 同步 |
 | WebUI 管理台 | `/admin` 单页应用（中英文双语、深色模式） |
 | 运维探针 | `GET /healthz`（存活）、`GET /readyz`（就绪） |
+
+## 平台兼容矩阵
+
+| 级别 | 平台 | 当前状态 |
+| --- | --- | --- |
+| P0 | Codex CLI/SDK（`wire_api=chat` / `wire_api=responses`） | ✅ |
+| P0 | OpenAI SDK（JS/Python，chat + responses） | ✅ |
+| P0 | Vercel AI SDK（openai-compatible） | ✅ |
+| P0 | Anthropic SDK（messages） | ✅ |
+| P1 | LangChain / LlamaIndex / OpenWebUI（OpenAI 兼容接入） | ✅ |
+| P2 | MCP 独立桥接层 | 规划中 |
 
 ## 模型支持
 
@@ -196,6 +207,7 @@ cp opencode.json.example opencode.json
 3. 在项目目录启动 OpenCode CLI（按你的安装方式运行 `opencode`）。
 
 > 建议优先使用 OpenAI 兼容路径（`/v1/*`），即示例里的 `@ai-sdk/openai-compatible` provider。
+> 若客户端支持 `wire_api`，可分别测试 `responses` 与 `chat`，DS2API 两条链路都兼容。
 
 ## 配置说明
 
@@ -216,6 +228,24 @@ cp opencode.json.example opencode.json
       "token": ""
     }
   ],
+  "model_aliases": {
+    "gpt-4o": "deepseek-chat",
+    "gpt-5-codex": "deepseek-reasoner",
+    "o3": "deepseek-reasoner"
+  },
+  "compat": {
+    "wide_input_strict_output": true
+  },
+  "toolcall": {
+    "mode": "feature_match",
+    "early_emit_confidence": "high"
+  },
+  "responses": {
+    "store_ttl_seconds": 900
+  },
+  "embeddings": {
+    "provider": "deterministic"
+  },
   "claude_model_mapping": {
     "fast": "deepseek-chat",
     "slow": "deepseek-reasoner"
@@ -226,6 +256,11 @@ cp opencode.json.example opencode.json
 - `keys`：API 访问密钥列表，客户端通过 `Authorization: Bearer <key>` 鉴权
 - `accounts`：DeepSeek 账号列表，支持 `email` 或 `mobile` 登录
 - `token`：留空则首次请求时自动登录获取；也可预填已有 token
+- `model_aliases`：常见模型名（如 GPT/Codex/Claude）到 DeepSeek 模型的映射
+- `compat.wide_input_strict_output`：建议保持 `true`（当前实现默认宽进严出）
+- `toolcall`：固定采用特征匹配 + 高置信早发策略
+- `responses.store_ttl_seconds`：`/v1/responses/{id}` 的内存缓存 TTL
+- `embeddings.provider`：embedding 提供方（当前内置 `deterministic/mock/builtin`）
 - `claude_model_mapping`：字典中 `fast`/`slow` 后缀映射到对应 DeepSeek 模型
 
 ### 环境变量
@@ -281,10 +316,10 @@ cp opencode.json.example opencode.json
 
 当请求中带 `tools` 时，DS2API 会做防泄漏处理：
 
-1. `stream=true` 时先**缓冲**正文片段
-2. 若识别到工具调用 → 仅输出结构化 `tool_calls`，不透传原始 JSON 文本
-3. 若最终不是工具调用 → 一次性输出普通文本
-4. 解析器支持混合文本、fenced JSON、`function.arguments` 字符串等格式
+1. 只在**非代码块上下文**启用 toolcall 特征识别（代码块示例不会触发）
+2. 一旦命中高置信特征（`tool_calls` + `name` + `arguments/input` 起始）就立即输出 `delta.tool_calls`
+3. 已确认的 toolcall JSON 片段不会泄漏到 `delta.content`
+4. 前文/后文自然语言保持顺序透传，支持混合文本与增量参数输出
 
 ## 项目结构
 

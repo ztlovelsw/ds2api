@@ -19,11 +19,8 @@ func TestParseToolCalls(t *testing.T) {
 func TestParseToolCallsFromFencedJSON(t *testing.T) {
 	text := "I will call tools now\n```json\n{\"tool_calls\":[{\"name\":\"search\",\"input\":{\"q\":\"news\"}}]}\n```"
 	calls := ParseToolCalls(text, []string{"search"})
-	if len(calls) != 1 {
-		t.Fatalf("expected 1 call, got %d", len(calls))
-	}
-	if calls[0].Input["q"] != "news" {
-		t.Fatalf("unexpected args: %#v", calls[0].Input)
+	if len(calls) != 0 {
+		t.Fatalf("expected fenced tool_call example to be ignored, got %#v", calls)
 	}
 }
 

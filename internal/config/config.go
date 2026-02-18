@@ -62,9 +62,31 @@ type Config struct {
 	Accounts         []Account         `json:"accounts,omitempty"`
 	ClaudeMapping    map[string]string `json:"claude_mapping,omitempty"`
 	ClaudeModelMap   map[string]string `json:"claude_model_mapping,omitempty"`
+	ModelAliases     map[string]string `json:"model_aliases,omitempty"`
+	Compat           CompatConfig      `json:"compat,omitempty"`
+	Toolcall         ToolcallConfig    `json:"toolcall,omitempty"`
+	Responses        ResponsesConfig   `json:"responses,omitempty"`
+	Embeddings       EmbeddingsConfig  `json:"embeddings,omitempty"`
 	VercelSyncHash   string            `json:"_vercel_sync_hash,omitempty"`
 	VercelSyncTime   int64             `json:"_vercel_sync_time,omitempty"`
 	AdditionalFields map[string]any    `json:"-"`
+}
+
+type CompatConfig struct {
+	WideInputStrictOutput bool `json:"wide_input_strict_output,omitempty"`
+}
+
+type ToolcallConfig struct {
+	Mode                string `json:"mode,omitempty"`
+	EarlyEmitConfidence string `json:"early_emit_confidence,omitempty"`
+}
+
+type ResponsesConfig struct {
+	StoreTTLSeconds int `json:"store_ttl_seconds,omitempty"`
+}
+
+type EmbeddingsConfig struct {
+	Provider string `json:"provider,omitempty"`
 }
 
 func (c Config) MarshalJSON() ([]byte, error) {
@@ -83,6 +105,21 @@ func (c Config) MarshalJSON() ([]byte, error) {
 	}
 	if len(c.ClaudeModelMap) > 0 {
 		m["claude_model_mapping"] = c.ClaudeModelMap
+	}
+	if len(c.ModelAliases) > 0 {
+		m["model_aliases"] = c.ModelAliases
+	}
+	if c.Compat.WideInputStrictOutput {
+		m["compat"] = c.Compat
+	}
+	if strings.TrimSpace(c.Toolcall.Mode) != "" || strings.TrimSpace(c.Toolcall.EarlyEmitConfidence) != "" {
+		m["toolcall"] = c.Toolcall
+	}
+	if c.Responses.StoreTTLSeconds > 0 {
+		m["responses"] = c.Responses
+	}
+	if strings.TrimSpace(c.Embeddings.Provider) != "" {
+		m["embeddings"] = c.Embeddings
 	}
 	if c.VercelSyncHash != "" {
 		m["_vercel_sync_hash"] = c.VercelSyncHash
@@ -117,6 +154,26 @@ func (c *Config) UnmarshalJSON(b []byte) error {
 			if err := json.Unmarshal(v, &c.ClaudeModelMap); err != nil {
 				return fmt.Errorf("invalid field %q: %w", k, err)
 			}
+		case "model_aliases":
+			if err := json.Unmarshal(v, &c.ModelAliases); err != nil {
+				return fmt.Errorf("invalid field %q: %w", k, err)
+			}
+		case "compat":
+			if err := json.Unmarshal(v, &c.Compat); err != nil {
+				return fmt.Errorf("invalid field %q: %w", k, err)
+			}
+		case "toolcall":
+			if err := json.Unmarshal(v, &c.Toolcall); err != nil {
+				return fmt.Errorf("invalid field %q: %w", k, err)
+			}
+		case "responses":
+			if err := json.Unmarshal(v, &c.Responses); err != nil {
+				return fmt.Errorf("invalid field %q: %w", k, err)
+			}
+		case "embeddings":
+			if err := json.Unmarshal(v, &c.Embeddings); err != nil {
+				return fmt.Errorf("invalid field %q: %w", k, err)
+			}
 		case "_vercel_sync_hash":
 			if err := json.Unmarshal(v, &c.VercelSyncHash); err != nil {
 				return fmt.Errorf("invalid field %q: %w", k, err)
@@ -141,6 +198,11 @@ func (c Config) Clone() Config {
 		Accounts:         slices.Clone(c.Accounts),
 		ClaudeMapping:    cloneStringMap(c.ClaudeMapping),
 		ClaudeModelMap:   cloneStringMap(c.ClaudeModelMap),
+		ModelAliases:     cloneStringMap(c.ModelAliases),
+		Compat:           c.Compat,
+		Toolcall:         c.Toolcall,
+		Responses:        c.Responses,
+		Embeddings:       c.Embeddings,
 		VercelSyncHash:   c.VercelSyncHash,
 		VercelSyncTime:   c.VercelSyncTime,
 		AdditionalFields: map[string]any{},
@@ -489,4 +551,60 @@ func (s *Store) ClaudeMapping() map[string]string {
 		return cloneStringMap(s.cfg.ClaudeMapping)
 	}
 	return map[string]string{"fast": "deepseek-chat", "slow": "deepseek-reasoner"}
+}
+
+func (s *Store) ModelAliases() map[string]string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := DefaultModelAliases()
+	for k, v := range s.cfg.ModelAliases {
+		key := strings.TrimSpace(lower(k))
+		val := strings.TrimSpace(lower(v))
+		if key == "" || val == "" {
+			continue
+		}
+		out[key] = val
+	}
+	return out
+}
+
+func (s *Store) CompatWideInputStrictOutput() bool {
+	// Current default policy is always wide-input / strict-output.
+	// Kept as a method so callers do not depend on storage shape.
+	return true
+}
+
+func (s *Store) ToolcallMode() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	mode := strings.TrimSpace(strings.ToLower(s.cfg.Toolcall.Mode))
+	if mode == "" {
+		return "feature_match"
+	}
+	return mode
+}
+
+func (s *Store) ToolcallEarlyEmitConfidence() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	level := strings.TrimSpace(strings.ToLower(s.cfg.Toolcall.EarlyEmitConfidence))
+	if level == "" {
+		return "high"
+	}
+	return level
+}
+
+func (s *Store) ResponsesStoreTTLSeconds() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.cfg.Responses.StoreTTLSeconds > 0 {
+		return s.cfg.Responses.StoreTTLSeconds
+	}
+	return 900
+}
+
+func (s *Store) EmbeddingsProvider() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return strings.TrimSpace(s.cfg.Embeddings.Provider)
 }

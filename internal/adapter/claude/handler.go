@@ -43,6 +43,9 @@ func (h *Handler) ListModels(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
+	if strings.TrimSpace(r.Header.Get("anthropic-version")) == "" {
+		r.Header.Set("anthropic-version", "2023-06-01")
+	}
 	a, err := h.Auth.Determine(r)
 	if err != nil {
 		status := http.StatusUnauthorized
@@ -50,21 +53,24 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 		if err == auth.ErrNoAccount {
 			status = http.StatusTooManyRequests
 		}
-		writeJSON(w, status, map[string]any{"error": map[string]any{"type": "invalid_request_error", "message": detail}})
+		writeClaudeError(w, status, detail)
 		return
 	}
 	defer h.Auth.Release(a)
 
 	var req map[string]any
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"type": "invalid_request_error", "message": "invalid json"}})
+		writeClaudeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
 	model, _ := req["model"].(string)
 	messagesRaw, _ := req["messages"].([]any)
 	if model == "" || len(messagesRaw) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{"type": "invalid_request_error", "message": "Request must include 'model' and 'messages'."}})
+		writeClaudeError(w, http.StatusBadRequest, "Request must include 'model' and 'messages'.")
 		return
+	}
+	if _, ok := req["max_tokens"]; !ok {
+		req["max_tokens"] = 8192
 	}
 
 	normalized := normalizeClaudeMessages(messagesRaw)
@@ -86,12 +92,12 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 
 	sessionID, err := h.DS.CreateSession(r.Context(), a, 3)
 	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]any{"type": "api_error", "message": "invalid token."}})
+		writeClaudeError(w, http.StatusUnauthorized, "invalid token.")
 		return
 	}
 	pow, err := h.DS.GetPow(r.Context(), a, 3)
 	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": map[string]any{"type": "api_error", "message": "Failed to get PoW"}})
+		writeClaudeError(w, http.StatusUnauthorized, "Failed to get PoW")
 		return
 	}
 	requestPayload := map[string]any{
@@ -104,13 +110,13 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 	}
 	resp, err := h.DS.CallCompletion(r.Context(), a, requestPayload, pow, 3)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "api_error", "message": "Failed to get Claude response."}})
+		writeClaudeError(w, http.StatusInternalServerError, "Failed to get Claude response.")
 		return
 	}
 	if resp.StatusCode != http.StatusOK {
 		defer resp.Body.Close()
 		body, _ := io.ReadAll(resp.Body)
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "api_error", "message": string(body)}})
+		writeClaudeError(w, http.StatusInternalServerError, string(body))
 		return
 	}
 
@@ -162,20 +168,20 @@ func (h *Handler) Messages(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) CountTokens(w http.ResponseWriter, r *http.Request) {
 	a, err := h.Auth.Determine(r)
 	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": err.Error()})
+		writeClaudeError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 	defer h.Auth.Release(a)
 
 	var req map[string]any
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
+		writeClaudeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
 	model, _ := req["model"].(string)
 	messages, _ := req["messages"].([]any)
 	if model == "" || len(messages) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "Request must include 'model' and 'messages'."})
+		writeClaudeError(w, http.StatusBadRequest, "Request must include 'model' and 'messages'.")
 		return
 	}
 	inputTokens := 0
@@ -206,7 +212,7 @@ func (h *Handler) handleClaudeStreamRealtime(w http.ResponseWriter, r *http.Requ
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": map[string]any{"type": "api_error", "message": string(body)}})
+		writeClaudeError(w, http.StatusInternalServerError, string(body))
 		return
 	}
 
@@ -241,6 +247,8 @@ func (h *Handler) handleClaudeStreamRealtime(w http.ResponseWriter, r *http.Requ
 			"error": map[string]any{
 				"type":    "api_error",
 				"message": msg,
+				"code":    "internal_error",
+				"param":   nil,
 			},
 		})
 	}
@@ -490,6 +498,28 @@ func (h *Handler) handleClaudeStreamRealtime(w http.ResponseWriter, r *http.Requ
 			}
 		}
 	}
+}
+
+func writeClaudeError(w http.ResponseWriter, status int, message string) {
+	code := "invalid_request"
+	switch status {
+	case http.StatusUnauthorized:
+		code = "authentication_failed"
+	case http.StatusTooManyRequests:
+		code = "rate_limit_exceeded"
+	case http.StatusNotFound:
+		code = "not_found"
+	case http.StatusInternalServerError:
+		code = "internal_error"
+	}
+	writeJSON(w, status, map[string]any{
+		"error": map[string]any{
+			"type":    "invalid_request_error",
+			"message": message,
+			"code":    code,
+			"param":   nil,
+		},
+	})
 }
 
 func normalizeClaudeMessages(messages []any) []any {
