@@ -735,3 +735,73 @@ func TestHandleStreamToolCallArgumentsEmitIncrementally(t *testing.T) {
 		t.Fatalf("expected finish_reason=tool_calls, body=%s", rec.Body.String())
 	}
 }
+
+func TestHandleStreamMultiToolCallDoesNotMergeNamesOrArguments(t *testing.T) {
+	h := &Handler{}
+	resp := makeSSEHTTPResponse(
+		`data: {"p":"response/content","v":"{\"tool_calls\":[{\"name\":\"search_web\",\"input\":{\"query\":\"latest ai news\"}},{"}`,
+		`data: {"p":"response/content","v":"\"name\":\"eval_javascript\",\"input\":{\"code\":\"1+1\"}}]}"}`,
+		`data: [DONE]`,
+	)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	h.handleStream(rec, req, resp, "cid12", "deepseek-chat", "prompt", false, false, []string{"search_web", "eval_javascript"})
+
+	frames, done := parseSSEDataFrames(t, rec.Body.String())
+	if !done {
+		t.Fatalf("expected [DONE], body=%s", rec.Body.String())
+	}
+	if !streamHasToolCallsDelta(frames) {
+		t.Fatalf("expected tool_calls delta, body=%s", rec.Body.String())
+	}
+
+	foundSearch := false
+	foundEval := false
+	foundIndex1 := false
+	toolCallsDeltaLens := make([]int, 0, 2)
+	for _, frame := range frames {
+		choices, _ := frame["choices"].([]any)
+		for _, item := range choices {
+			choice, _ := item.(map[string]any)
+			delta, _ := choice["delta"].(map[string]any)
+			rawToolCalls, hasToolCalls := delta["tool_calls"]
+			if !hasToolCalls {
+				continue
+			}
+			toolCalls, _ := rawToolCalls.([]any)
+			toolCallsDeltaLens = append(toolCallsDeltaLens, len(toolCalls))
+			for _, tc := range toolCalls {
+				tcm, _ := tc.(map[string]any)
+				if idx, ok := tcm["index"].(float64); ok && int(idx) == 1 {
+					foundIndex1 = true
+				}
+				fn, _ := tcm["function"].(map[string]any)
+				name, _ := fn["name"].(string)
+				switch name {
+				case "search_web":
+					foundSearch = true
+				case "eval_javascript":
+					foundEval = true
+				case "search_webeval_javascript":
+					t.Fatalf("unexpected merged tool name: %s, body=%s", name, rec.Body.String())
+				}
+				if args, ok := fn["arguments"].(string); ok && strings.Contains(args, `}{"`) {
+					t.Fatalf("unexpected concatenated tool arguments: %q, body=%s", args, rec.Body.String())
+				}
+			}
+		}
+	}
+	if !foundSearch || !foundEval {
+		t.Fatalf("expected both tool names in stream deltas, foundSearch=%v foundEval=%v body=%s", foundSearch, foundEval, rec.Body.String())
+	}
+	if len(toolCallsDeltaLens) != 1 || toolCallsDeltaLens[0] != 2 {
+		t.Fatalf("expected exactly one tool_calls delta with two calls, got lens=%v body=%s", toolCallsDeltaLens, rec.Body.String())
+	}
+	if !foundIndex1 {
+		t.Fatalf("expected second tool call index in stream deltas, body=%s", rec.Body.String())
+	}
+	if streamFinishReason(frames) != "tool_calls" {
+		t.Fatalf("expected finish_reason=tool_calls, body=%s", rec.Body.String())
+	}
+}

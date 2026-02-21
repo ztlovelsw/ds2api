@@ -12,6 +12,7 @@ import (
 
 	"ds2api/internal/account"
 	"ds2api/internal/adapter/claude"
+	"ds2api/internal/adapter/gemini"
 	"ds2api/internal/adapter/openai"
 	"ds2api/internal/admin"
 	"ds2api/internal/auth"
@@ -44,6 +45,7 @@ func NewApp() *App {
 
 	openaiHandler := &openai.Handler{Store: store, Auth: resolver, DS: dsClient}
 	claudeHandler := &claude.Handler{Store: store, Auth: resolver, DS: dsClient}
+	geminiHandler := &gemini.Handler{Store: store, Auth: resolver, DS: dsClient}
 	adminHandler := &admin.Handler{Store: store, Pool: pool, DS: dsClient}
 	webuiHandler := webui.NewHandler()
 
@@ -67,6 +69,7 @@ func NewApp() *App {
 	})
 	openai.RegisterRoutes(r, openaiHandler)
 	claude.RegisterRoutes(r, claudeHandler)
+	gemini.RegisterRoutes(r, geminiHandler)
 	r.Route("/admin", func(ar chi.Router) {
 		admin.RegisterRoutes(ar, adminHandler)
 	})

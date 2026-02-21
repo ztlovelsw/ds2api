@@ -25,10 +25,11 @@ type chatStreamRuntime struct {
 	thinkingEnabled bool
 	searchEnabled   bool
 
-	firstChunkSent      bool
-	bufferToolContent   bool
-	emitEarlyToolDeltas bool
-	toolCallsEmitted    bool
+	firstChunkSent       bool
+	bufferToolContent    bool
+	emitEarlyToolDeltas  bool
+	toolCallsEmitted     bool
+	toolCallsDoneEmitted bool
 
 	toolSieve         toolStreamSieveState
 	streamToolCallIDs map[int]string
@@ -96,10 +97,10 @@ func (s *chatStreamRuntime) finalize(finishReason string) {
 	finalThinking := s.thinking.String()
 	finalText := s.text.String()
 	detected := util.ParseToolCalls(finalText, s.toolNames)
-	if len(detected) > 0 && !s.toolCallsEmitted {
+	if len(detected) > 0 && !s.toolCallsDoneEmitted {
 		finishReason = "tool_calls"
 		delta := map[string]any{
-			"tool_calls": util.FormatOpenAIStreamToolCalls(detected),
+			"tool_calls": formatFinalStreamToolCallsWithStableIDs(detected, s.streamToolCallIDs),
 		}
 		if !s.firstChunkSent {
 			delta["role"] = "assistant"
@@ -112,8 +113,29 @@ func (s *chatStreamRuntime) finalize(finishReason string) {
 			[]map[string]any{openaifmt.BuildChatStreamDeltaChoice(0, delta)},
 			nil,
 		))
+		s.toolCallsEmitted = true
+		s.toolCallsDoneEmitted = true
 	} else if s.bufferToolContent {
 		for _, evt := range flushToolSieve(&s.toolSieve, s.toolNames) {
+			if len(evt.ToolCalls) > 0 {
+				finishReason = "tool_calls"
+				s.toolCallsEmitted = true
+				s.toolCallsDoneEmitted = true
+				tcDelta := map[string]any{
+					"tool_calls": formatFinalStreamToolCallsWithStableIDs(evt.ToolCalls, s.streamToolCallIDs),
+				}
+				if !s.firstChunkSent {
+					tcDelta["role"] = "assistant"
+					s.firstChunkSent = true
+				}
+				s.sendChunk(openaifmt.BuildChatStreamChunk(
+					s.completionID,
+					s.created,
+					s.model,
+					[]map[string]any{openaifmt.BuildChatStreamDeltaChoice(0, tcDelta)},
+					nil,
+				))
+			}
 			if evt.Content == "" {
 				continue
 			}
@@ -189,10 +211,14 @@ func (s *chatStreamRuntime) onParsed(parsed sse.LineResult) streamengine.ParsedD
 						if !s.emitEarlyToolDeltas {
 							continue
 						}
-						s.toolCallsEmitted = true
-						tcDelta := map[string]any{
-							"tool_calls": formatIncrementalStreamToolCallDeltas(evt.ToolCallDeltas, s.streamToolCallIDs),
+						formatted := formatIncrementalStreamToolCallDeltas(evt.ToolCallDeltas, s.streamToolCallIDs)
+						if len(formatted) == 0 {
+							continue
 						}
+						tcDelta := map[string]any{
+							"tool_calls": formatted,
+						}
+						s.toolCallsEmitted = true
 						if !s.firstChunkSent {
 							tcDelta["role"] = "assistant"
 							s.firstChunkSent = true
@@ -202,8 +228,9 @@ func (s *chatStreamRuntime) onParsed(parsed sse.LineResult) streamengine.ParsedD
 					}
 					if len(evt.ToolCalls) > 0 {
 						s.toolCallsEmitted = true
+						s.toolCallsDoneEmitted = true
 						tcDelta := map[string]any{
-							"tool_calls": util.FormatOpenAIStreamToolCalls(evt.ToolCalls),
+							"tool_calls": formatFinalStreamToolCallsWithStableIDs(evt.ToolCalls, s.streamToolCallIDs),
 						}
 						if !s.firstChunkSent {
 							tcDelta["role"] = "assistant"

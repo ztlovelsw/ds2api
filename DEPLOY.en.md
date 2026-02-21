@@ -518,7 +518,7 @@ curl http://127.0.0.1:5001/v1/chat/completions \
 Run the full live testsuite before release (real account tests):
 
 ```bash
-./scripts/testsuite/run-live.sh
+./tests/scripts/run-live.sh
 ```
 
 With custom flags:

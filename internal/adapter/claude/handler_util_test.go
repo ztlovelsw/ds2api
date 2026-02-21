@@ -1,6 +1,7 @@
 package claude
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -48,8 +49,9 @@ func TestNormalizeClaudeMessagesToolResult(t *testing.T) {
 	}
 	got := normalizeClaudeMessages(msgs)
 	m := got[0].(map[string]any)
-	if m["content"] != "tool output" {
-		t.Fatalf("expected 'tool output', got %q", m["content"])
+	content, _ := m["content"].(string)
+	if !strings.Contains(content, "[TOOL_RESULT_HISTORY]") || !strings.Contains(content, "content: tool output") {
+		t.Fatalf("expected serialized tool result marker, got %q", content)
 	}
 }
 

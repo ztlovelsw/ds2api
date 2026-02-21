@@ -187,7 +187,12 @@ func extractCallerToken(req *http.Request) string {
 			return token
 		}
 	}
-	return strings.TrimSpace(req.Header.Get("x-api-key"))
+	if key := strings.TrimSpace(req.Header.Get("x-api-key")); key != "" {
+		return key
+	}
+	// Gemini AI Studio compatibility: allow query key fallback only when no
+	// header-based credential is present.
+	return strings.TrimSpace(req.URL.Query().Get("key"))
 }
 
 func callerTokenID(token string) string {

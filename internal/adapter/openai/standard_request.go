@@ -8,7 +8,7 @@ import (
 	"ds2api/internal/util"
 )
 
-func normalizeOpenAIChatRequest(store ConfigReader, req map[string]any) (util.StandardRequest, error) {
+func normalizeOpenAIChatRequest(store ConfigReader, req map[string]any, traceID string) (util.StandardRequest, error) {
 	model, _ := req["model"].(string)
 	messagesRaw, _ := req["messages"].([]any)
 	if strings.TrimSpace(model) == "" || len(messagesRaw) == 0 {
@@ -23,7 +23,7 @@ func normalizeOpenAIChatRequest(store ConfigReader, req map[string]any) (util.St
 	if responseModel == "" {
 		responseModel = resolvedModel
 	}
-	finalPrompt, toolNames := buildOpenAIFinalPrompt(messagesRaw, req["tools"])
+	finalPrompt, toolNames := buildOpenAIFinalPrompt(messagesRaw, req["tools"], traceID)
 	passThrough := collectOpenAIChatPassThrough(req)
 
 	return util.StandardRequest{
@@ -41,7 +41,7 @@ func normalizeOpenAIChatRequest(store ConfigReader, req map[string]any) (util.St
 	}, nil
 }
 
-func normalizeOpenAIResponsesRequest(store ConfigReader, req map[string]any) (util.StandardRequest, error) {
+func normalizeOpenAIResponsesRequest(store ConfigReader, req map[string]any, traceID string) (util.StandardRequest, error) {
 	model, _ := req["model"].(string)
 	model = strings.TrimSpace(model)
 	if model == "" {
@@ -67,7 +67,7 @@ func normalizeOpenAIResponsesRequest(store ConfigReader, req map[string]any) (ut
 	if len(messagesRaw) == 0 {
 		return util.StandardRequest{}, fmt.Errorf("Request must include 'input' or 'messages'.")
 	}
-	finalPrompt, toolNames := buildOpenAIFinalPrompt(messagesRaw, req["tools"])
+	finalPrompt, toolNames := buildOpenAIFinalPrompt(messagesRaw, req["tools"], traceID)
 	passThrough := collectOpenAIChatPassThrough(req)
 
 	return util.StandardRequest{

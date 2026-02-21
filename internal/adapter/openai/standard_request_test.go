@@ -22,7 +22,7 @@ func TestNormalizeOpenAIChatRequest(t *testing.T) {
 		"temperature": 0.3,
 		"stream":      true,
 	}
-	n, err := normalizeOpenAIChatRequest(store, req)
+	n, err := normalizeOpenAIChatRequest(store, req, "")
 	if err != nil {
 		t.Fatalf("normalize failed: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestNormalizeOpenAIResponsesRequestInput(t *testing.T) {
 		"input":        "ping",
 		"instructions": "system",
 	}
-	n, err := normalizeOpenAIResponsesRequest(store, req)
+	n, err := normalizeOpenAIResponsesRequest(store, req, "")
 	if err != nil {
 		t.Fatalf("normalize failed: %v", err)
 	}

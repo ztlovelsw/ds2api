@@ -86,7 +86,7 @@ docker-compose -f docker-compose.dev.yml up
 go test ./...
 
 # 端到端全链路测试（真实账号）
-./scripts/testsuite/run-live.sh
+./tests/scripts/run-live.sh
 ```
 
 ## 项目结构

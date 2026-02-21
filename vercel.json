@@ -39,6 +39,18 @@
       "destination": "/api/index"
     },
     {
+      "source": "/admin/config/(.*)",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/admin/settings",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/admin/settings/(.*)",
+      "destination": "/api/index"
+    },
+    {
       "source": "/admin/keys(.*)",
       "destination": "/api/index"
     },

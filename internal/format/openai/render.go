@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -43,35 +44,44 @@ func BuildChatCompletion(completionID, model, finalPrompt, finalThinking, finalT
 }
 
 func BuildResponseObject(responseID, model, finalPrompt, finalThinking, finalText string, toolNames []string) map[string]any {
+	// Align responses tool-call semantics with chat/completions:
+	// mixed prose + tool_call payloads should still be interpreted as tool calls.
 	detected := util.ParseToolCalls(finalText, toolNames)
+	if len(detected) == 0 && strings.TrimSpace(finalThinking) != "" {
+		detected = util.ParseToolCalls(finalThinking, toolNames)
+	}
 	exposedOutputText := finalText
 	output := make([]any, 0, 2)
 	if len(detected) > 0 {
 		exposedOutputText = ""
-		toolCalls := make([]any, 0, len(detected))
-		for _, tc := range detected {
-			toolCalls = append(toolCalls, map[string]any{
-				"type":      "tool_call",
-				"name":      tc.Name,
-				"arguments": tc.Input,
+		if strings.TrimSpace(finalThinking) != "" {
+			output = append(output, map[string]any{
+				"type": "reasoning",
+				"text": finalThinking,
 			})
 		}
+		formatted := util.FormatOpenAIToolCalls(detected)
+		output = append(output, toResponsesFunctionCallItems(formatted)...)
 		output = append(output, map[string]any{
 			"type":       "tool_calls",
-			"tool_calls": toolCalls,
+			"tool_calls": formatted,
 		})
 	} else {
-		content := []any{
-			map[string]any{
-				"type": "output_text",
-				"text": finalText,
-			},
-		}
+		content := make([]any, 0, 2)
 		if finalThinking != "" {
 			content = append([]any{map[string]any{
 				"type": "reasoning",
 				"text": finalThinking,
 			}}, content...)
+		}
+		if strings.TrimSpace(finalText) != "" {
+			content = append(content, map[string]any{
+				"type": "output_text",
+				"text": finalText,
+			})
+		}
+		if strings.TrimSpace(finalText) == "" && strings.TrimSpace(finalThinking) != "" {
+			exposedOutputText = finalThinking
 		}
 		output = append(output, map[string]any{
 			"type":    "message",
@@ -98,6 +108,54 @@ func BuildResponseObject(responseID, model, finalPrompt, finalThinking, finalTex
 			"total_tokens":  promptTokens + reasoningTokens + completionTokens,
 		},
 	}
+}
+
+func toResponsesFunctionCallItems(toolCalls []map[string]any) []any {
+	if len(toolCalls) == 0 {
+		return nil
+	}
+	out := make([]any, 0, len(toolCalls))
+	for _, tc := range toolCalls {
+		callID, _ := tc["id"].(string)
+		if strings.TrimSpace(callID) == "" {
+			callID = "call_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+		}
+		name := ""
+		args := "{}"
+		if fn, ok := tc["function"].(map[string]any); ok {
+			if n, _ := fn["name"].(string); strings.TrimSpace(n) != "" {
+				name = n
+			}
+			if a, _ := fn["arguments"].(string); strings.TrimSpace(a) != "" {
+				args = a
+			}
+		}
+		out = append(out, map[string]any{
+			"id":        "fc_" + strings.ReplaceAll(uuid.NewString(), "-", ""),
+			"type":      "function_call",
+			"call_id":   callID,
+			"name":      name,
+			"arguments": normalizeJSONString(args),
+			"status":    "completed",
+		})
+	}
+	return out
+}
+
+func normalizeJSONString(raw string) string {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return "{}"
+	}
+	var v any
+	if err := json.Unmarshal([]byte(s), &v); err != nil {
+		return raw
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return raw
+	}
+	return string(b)
 }
 
 func BuildChatStreamDeltaChoice(index int, delta map[string]any) map[string]any {
@@ -145,49 +203,105 @@ func BuildChatUsage(finalPrompt, finalThinking, finalText string) map[string]any
 
 func BuildResponsesCreatedPayload(responseID, model string) map[string]any {
 	return map[string]any{
-		"type":   "response.created",
-		"id":     responseID,
-		"object": "response",
-		"model":  model,
-		"status": "in_progress",
+		"type":        "response.created",
+		"id":          responseID,
+		"response_id": responseID,
+		"object":      "response",
+		"model":       model,
+		"status":      "in_progress",
 	}
 }
 
 func BuildResponsesTextDeltaPayload(responseID, delta string) map[string]any {
 	return map[string]any{
-		"type":  "response.output_text.delta",
-		"id":    responseID,
-		"delta": delta,
+		"type":        "response.output_text.delta",
+		"id":          responseID,
+		"response_id": responseID,
+		"delta":       delta,
 	}
 }
 
 func BuildResponsesReasoningDeltaPayload(responseID, delta string) map[string]any {
 	return map[string]any{
-		"type":  "response.reasoning.delta",
-		"id":    responseID,
-		"delta": delta,
+		"type":        "response.reasoning.delta",
+		"id":          responseID,
+		"response_id": responseID,
+		"delta":       delta,
+	}
+}
+
+func BuildResponsesReasoningTextDeltaPayload(responseID, itemID string, outputIndex, contentIndex int, delta string) map[string]any {
+	return map[string]any{
+		"type":          "response.reasoning_text.delta",
+		"id":            responseID,
+		"response_id":   responseID,
+		"item_id":       itemID,
+		"output_index":  outputIndex,
+		"content_index": contentIndex,
+		"delta":         delta,
+	}
+}
+
+func BuildResponsesReasoningTextDonePayload(responseID, itemID string, outputIndex, contentIndex int, text string) map[string]any {
+	return map[string]any{
+		"type":          "response.reasoning_text.done",
+		"id":            responseID,
+		"response_id":   responseID,
+		"item_id":       itemID,
+		"output_index":  outputIndex,
+		"content_index": contentIndex,
+		"text":          text,
 	}
 }
 
 func BuildResponsesToolCallDeltaPayload(responseID string, toolCalls []map[string]any) map[string]any {
 	return map[string]any{
-		"type":       "response.output_tool_call.delta",
-		"id":         responseID,
-		"tool_calls": toolCalls,
+		"type":        "response.output_tool_call.delta",
+		"id":          responseID,
+		"response_id": responseID,
+		"tool_calls":  toolCalls,
 	}
 }
 
 func BuildResponsesToolCallDonePayload(responseID string, toolCalls []map[string]any) map[string]any {
 	return map[string]any{
-		"type":       "response.output_tool_call.done",
-		"id":         responseID,
-		"tool_calls": toolCalls,
+		"type":        "response.output_tool_call.done",
+		"id":          responseID,
+		"response_id": responseID,
+		"tool_calls":  toolCalls,
+	}
+}
+
+func BuildResponsesFunctionCallArgumentsDeltaPayload(responseID, itemID string, outputIndex int, callID, delta string) map[string]any {
+	return map[string]any{
+		"type":         "response.function_call_arguments.delta",
+		"id":           responseID,
+		"response_id":  responseID,
+		"item_id":      itemID,
+		"output_index": outputIndex,
+		"call_id":      callID,
+		"delta":        delta,
+	}
+}
+
+func BuildResponsesFunctionCallArgumentsDonePayload(responseID, itemID string, outputIndex int, callID, name, arguments string) map[string]any {
+	return map[string]any{
+		"type":         "response.function_call_arguments.done",
+		"id":           responseID,
+		"response_id":  responseID,
+		"item_id":      itemID,
+		"output_index": outputIndex,
+		"call_id":      callID,
+		"name":         name,
+		"arguments":    normalizeJSONString(arguments),
 	}
 }
 
 func BuildResponsesCompletedPayload(response map[string]any) map[string]any {
+	responseID, _ := response["id"].(string)
 	return map[string]any{
-		"type":     "response.completed",
-		"response": response,
+		"type":        "response.completed",
+		"response_id": responseID,
+		"response":    response,
 	}
 }

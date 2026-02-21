@@ -36,5 +36,7 @@ func RegisterRoutes(r chi.Router, h *Handler) {
 		pr.Post("/vercel/sync", h.syncVercel)
 		pr.Get("/vercel/status", h.vercelStatus)
 		pr.Get("/export", h.exportConfig)
+		pr.Get("/dev/captures", h.getDevCaptures)
+		pr.Delete("/dev/captures", h.clearDevCaptures)
 	})
 }

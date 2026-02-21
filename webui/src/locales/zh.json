@@ -198,6 +198,7 @@
     },
     "settings": {
         "loadFailed": "加载设置失败",
+        "nonJsonResponse": "服务端返回了非 JSON 响应（状态码：{status}）",
         "save": "保存设置",
         "saving": "保存中...",
         "saveSuccess": "设置已保存并热更新生效",
@@ -239,7 +240,9 @@
         "exportJson": "导出 JSON",
         "invalidJsonField": "{field} 不是有效 JSON 对象",
         "defaultPasswordWarning": "当前使用默认密码 admin，请尽快在此修改。",
-        "vercelSyncHint": "当前配置已更新。Vercel 部署请到 Vercel 同步页面手动同步并重部署。"
+        "vercelSyncHint": "当前配置已更新。Vercel 部署请到 Vercel 同步页面手动同步并重部署。",
+        "autoFetchPaused": "自动加载已暂停：连续失败 {count} 次（{error}）",
+        "retryLoad": "立即重试"
     },
     "login": {
         "welcome": "欢迎回来",
@@ -278,6 +281,8 @@
         "statusNotSynced": "未同步",
         "statusNeverSynced": "从未同步",
         "lastSyncTime": "上次同步: {time}",
+        "pollPaused": "状态轮询已暂停：连续失败 {count} 次。",
+        "manualRefresh": "手动刷新",
         "howItWorks": "工作原理",
         "steps": {
             "one": "当前配置 (密钥和账号) 被导出为 JSON 字符串。",

@@ -38,6 +38,10 @@ func RegisterRoutes(r chi.Router, h *Handler) {
 	r.Get("/anthropic/v1/models", h.ListModels)
 	r.Post("/anthropic/v1/messages", h.Messages)
 	r.Post("/anthropic/v1/messages/count_tokens", h.CountTokens)
+	r.Post("/v1/messages", h.Messages)
+	r.Post("/messages", h.Messages)
+	r.Post("/v1/messages/count_tokens", h.CountTokens)
+	r.Post("/messages/count_tokens", h.CountTokens)
 }
 
 func (h *Handler) ListModels(w http.ResponseWriter, _ *http.Request) {
@@ -167,7 +171,7 @@ func (h *Handler) handleClaudeStreamRealtime(w http.ResponseWriter, r *http.Requ
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 	rc := http.NewResponseController(w)
-	canFlush := rc.Flush() == nil
+	_, canFlush := w.(http.Flusher)
 	if !canFlush {
 		config.Logger.Warn("[claude_stream] response writer does not support flush; streaming may be buffered")
 	}
@@ -250,7 +254,7 @@ func normalizeClaudeMessages(messages []any) []any {
 					}
 				}
 				if typeStr == "tool_result" {
-					parts = append(parts, fmt.Sprintf("%v", b["content"]))
+					parts = append(parts, formatClaudeToolResultForPrompt(b))
 				}
 			}
 			copied["content"] = strings.Join(parts, "\n")
@@ -272,8 +276,34 @@ func buildClaudeToolPrompt(tools []any) string {
 		schema, _ := json.Marshal(m["input_schema"])
 		parts = append(parts, fmt.Sprintf("Tool: %s\nDescription: %s\nParameters: %s", name, desc, schema))
 	}
-	parts = append(parts, "When you need to use tools, you can call multiple tools in one response. Output ONLY JSON like {\"tool_calls\":[{\"name\":\"tool\",\"input\":{}}]}")
+	parts = append(parts,
+		"When you need to use tools, you can call multiple tools in one response. Output ONLY JSON like {\"tool_calls\":[{\"name\":\"tool\",\"input\":{}}]}",
+		"History markers in conversation: [TOOL_CALL_HISTORY]...[/TOOL_CALL_HISTORY] are your previous tool calls; [TOOL_RESULT_HISTORY]...[/TOOL_RESULT_HISTORY] are runtime tool outputs, not user input.",
+		"After a valid [TOOL_RESULT_HISTORY], continue with final answer instead of repeating the same call unless required fields are still missing.",
+	)
 	return strings.Join(parts, "\n\n")
+}
+
+func formatClaudeToolResultForPrompt(block map[string]any) string {
+	if block == nil {
+		return ""
+	}
+	toolCallID := strings.TrimSpace(fmt.Sprintf("%v", block["tool_use_id"]))
+	if toolCallID == "" {
+		toolCallID = strings.TrimSpace(fmt.Sprintf("%v", block["tool_call_id"]))
+	}
+	if toolCallID == "" {
+		toolCallID = "unknown"
+	}
+	name := strings.TrimSpace(fmt.Sprintf("%v", block["name"]))
+	if name == "" {
+		name = "unknown"
+	}
+	content := strings.TrimSpace(fmt.Sprintf("%v", block["content"]))
+	if content == "" {
+		content = "null"
+	}
+	return fmt.Sprintf("[TOOL_RESULT_HISTORY]\nstatus: already_returned\norigin: tool_runtime\nnot_user_input: true\ntool_call_id: %s\nname: %s\ncontent: %s\n[/TOOL_RESULT_HISTORY]", toolCallID, name, content)
 }
 
 func hasSystemMessage(messages []any) bool {

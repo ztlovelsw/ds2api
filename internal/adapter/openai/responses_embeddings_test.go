@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -29,6 +30,82 @@ func TestResponsesMessagesFromRequestWithInstructions(t *testing.T) {
 	sys, _ := msgs[0].(map[string]any)
 	if sys["role"] != "system" {
 		t.Fatalf("unexpected first message: %#v", sys)
+	}
+}
+
+func TestNormalizeResponsesInputAsMessagesObjectRoleContentBlocks(t *testing.T) {
+	msgs := normalizeResponsesInputAsMessages(map[string]any{
+		"role": "user",
+		"content": []any{
+			map[string]any{"type": "input_text", "text": "line-1"},
+			map[string]any{"type": "input_text", "text": "line-2"},
+		},
+	})
+	if len(msgs) != 1 {
+		t.Fatalf("expected one message, got %d", len(msgs))
+	}
+	m, _ := msgs[0].(map[string]any)
+	if m["role"] != "user" {
+		t.Fatalf("unexpected role: %#v", m)
+	}
+	if strings.TrimSpace(normalizeOpenAIContentForPrompt(m["content"])) != "line-1\nline-2" {
+		t.Fatalf("unexpected content: %#v", m["content"])
+	}
+}
+
+func TestNormalizeResponsesInputAsMessagesFunctionCallOutput(t *testing.T) {
+	msgs := normalizeResponsesInputAsMessages([]any{
+		map[string]any{
+			"type":    "function_call_output",
+			"call_id": "call_123",
+			"output":  map[string]any{"ok": true},
+		},
+	})
+	if len(msgs) != 1 {
+		t.Fatalf("expected one message, got %d", len(msgs))
+	}
+	m, _ := msgs[0].(map[string]any)
+	if m["role"] != "tool" {
+		t.Fatalf("expected tool role, got %#v", m)
+	}
+	if m["tool_call_id"] != "call_123" {
+		t.Fatalf("expected tool_call_id propagated, got %#v", m)
+	}
+}
+
+func TestNormalizeResponsesInputAsMessagesFunctionCallItem(t *testing.T) {
+	msgs := normalizeResponsesInputAsMessages([]any{
+		map[string]any{
+			"type":      "function_call",
+			"call_id":   "call_456",
+			"name":      "search",
+			"arguments": `{"q":"golang"}`,
+		},
+	})
+	if len(msgs) != 1 {
+		t.Fatalf("expected one message, got %d", len(msgs))
+	}
+	m, _ := msgs[0].(map[string]any)
+	if m["role"] != "assistant" {
+		t.Fatalf("expected assistant role, got %#v", m["role"])
+	}
+	toolCalls, _ := m["tool_calls"].([]any)
+	if len(toolCalls) != 1 {
+		t.Fatalf("expected one tool_call, got %#v", m["tool_calls"])
+	}
+	call, _ := toolCalls[0].(map[string]any)
+	if call["id"] != "call_456" {
+		t.Fatalf("expected call id preserved, got %#v", call)
+	}
+	if call["type"] != "function" {
+		t.Fatalf("expected function type, got %#v", call)
+	}
+	fn, _ := call["function"].(map[string]any)
+	if fn["name"] != "search" {
+		t.Fatalf("expected call name preserved, got %#v", call)
+	}
+	if fn["arguments"] != `{"q":"golang"}` {
+		t.Fatalf("expected call arguments preserved, got %#v", call)
 	}
 }
 

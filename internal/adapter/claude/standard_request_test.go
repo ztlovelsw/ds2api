@@ -36,3 +36,57 @@ func TestNormalizeClaudeRequest(t *testing.T) {
 		t.Fatalf("expected non-empty final prompt")
 	}
 }
+
+func TestNormalizeClaudeRequestInjectsToolsIntoExistingSystemMessage(t *testing.T) {
+	t.Setenv("DS2API_CONFIG_JSON", `{}`)
+	store := config.LoadStore()
+	req := map[string]any{
+		"model": "claude-sonnet-4-5",
+		"messages": []any{
+			map[string]any{"role": "system", "content": "baseline rule"},
+			map[string]any{"role": "user", "content": "hello"},
+		},
+		"tools": []any{
+			map[string]any{"name": "search", "description": "Search"},
+		},
+	}
+
+	norm, err := normalizeClaudeRequest(store, req)
+	if err != nil {
+		t.Fatalf("normalize failed: %v", err)
+	}
+
+	if !containsStr(norm.Standard.FinalPrompt, "You have access to these tools") {
+		t.Fatalf("expected tool prompt injected into final prompt, got=%q", norm.Standard.FinalPrompt)
+	}
+	if !containsStr(norm.Standard.FinalPrompt, "baseline rule") {
+		t.Fatalf("expected existing system message preserved, got=%q", norm.Standard.FinalPrompt)
+	}
+}
+
+func TestNormalizeClaudeRequestInjectsToolsIntoTopLevelSystem(t *testing.T) {
+	t.Setenv("DS2API_CONFIG_JSON", `{}`)
+	store := config.LoadStore()
+	req := map[string]any{
+		"model":  "claude-sonnet-4-5",
+		"system": "top-level system",
+		"messages": []any{
+			map[string]any{"role": "user", "content": "hello"},
+		},
+		"tools": []any{
+			map[string]any{"name": "search", "description": "Search"},
+		},
+	}
+
+	norm, err := normalizeClaudeRequest(store, req)
+	if err != nil {
+		t.Fatalf("normalize failed: %v", err)
+	}
+
+	if !containsStr(norm.Standard.FinalPrompt, "top-level system") {
+		t.Fatalf("expected top-level system preserved, got=%q", norm.Standard.FinalPrompt)
+	}
+	if !containsStr(norm.Standard.FinalPrompt, "You have access to these tools") {
+		t.Fatalf("expected tool prompt injected, got=%q", norm.Standard.FinalPrompt)
+	}
+}

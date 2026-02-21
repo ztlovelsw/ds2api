@@ -114,6 +114,40 @@ func TestDetermineMissingToken(t *testing.T) {
 	}
 }
 
+func TestDetermineWithQueryKeyUsesDirectToken(t *testing.T) {
+	r := newTestResolver(t)
+	req, _ := http.NewRequest(http.MethodPost, "/v1beta/models/gemini-2.5-pro:generateContent?key=direct-query-key", nil)
+
+	a, err := r.Determine(req)
+	if err != nil {
+		t.Fatalf("determine failed: %v", err)
+	}
+	if a.UseConfigToken {
+		t.Fatalf("expected direct token mode")
+	}
+	if a.DeepSeekToken != "direct-query-key" {
+		t.Fatalf("unexpected token: %q", a.DeepSeekToken)
+	}
+}
+
+func TestDetermineHeaderTokenPrecedenceOverQueryKey(t *testing.T) {
+	r := newTestResolver(t)
+	req, _ := http.NewRequest(http.MethodPost, "/v1beta/models/gemini-2.5-pro:generateContent?key=query-key", nil)
+	req.Header.Set("x-api-key", "managed-key")
+
+	a, err := r.Determine(req)
+	if err != nil {
+		t.Fatalf("determine failed: %v", err)
+	}
+	defer r.Release(a)
+	if !a.UseConfigToken {
+		t.Fatalf("expected managed key mode from header token")
+	}
+	if a.AccountID == "" {
+		t.Fatalf("expected managed account to be acquired")
+	}
+}
+
 func TestDetermineCallerMissingToken(t *testing.T) {
 	r := newTestResolver(t)
 	req, _ := http.NewRequest(http.MethodGet, "/v1/responses/resp_1", nil)

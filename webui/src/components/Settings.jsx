@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, Download, Lock, Save, Upload } from 'lucide-react'
 import { useI18n } from '../i18n'
 
-export default function Settings({ onRefresh, onMessage, authFetch, onForceLogout }) {
+const MAX_AUTO_FETCH_FAILURES = 3
+
+export default function Settings({ onRefresh, onMessage, authFetch, onForceLogout, isVercel = false }) {
     const { t } = useI18n()
     const apiFetch = authFetch || fetch
 
@@ -14,6 +16,9 @@ export default function Settings({ onRefresh, onMessage, authFetch, onForceLogou
     const [importMode, setImportMode] = useState('merge')
     const [importText, setImportText] = useState('')
     const [newPassword, setNewPassword] = useState('')
+    const [consecutiveFailures, setConsecutiveFailures] = useState(0)
+    const [autoFetchPaused, setAutoFetchPaused] = useState(false)
+    const [lastError, setLastError] = useState('')
     const [settingsMeta, setSettingsMeta] = useState({ default_password_warning: false, env_backed: false, needs_vercel_sync: false })
 
     const [form, setForm] = useState({
@@ -43,15 +48,38 @@ export default function Settings({ onRefresh, onMessage, authFetch, onForceLogou
         return parsed
     }
 
-    const loadSettings = useCallback(async () => {
+    const parseJSONResponse = useCallback(async (res) => {
+        const contentType = String(res.headers.get('content-type') || '').toLowerCase()
+        if (!contentType.includes('application/json')) {
+            throw new Error(t('settings.nonJsonResponse', { status: res.status }))
+        }
+        return res.json()
+    }, [t])
+
+    const loadSettings = useCallback(async ({ manual = false } = {}) => {
+        if (isVercel && autoFetchPaused && !manual) {
+            return
+        }
         setLoading(true)
         try {
             const res = await apiFetch('/admin/settings')
-            const data = await res.json()
+            const data = await parseJSONResponse(res)
             if (!res.ok) {
-                onMessage('error', data.detail || t('settings.loadFailed'))
+                const detail = data.detail || t('settings.loadFailed')
+                setLastError(detail)
+                onMessage('error', detail)
+                setConsecutiveFailures((prev) => {
+                    const next = prev + 1
+                    if (isVercel && next >= MAX_AUTO_FETCH_FAILURES) {
+                        setAutoFetchPaused(true)
+                    }
+                    return next
+                })
                 return
             }
+            setConsecutiveFailures(0)
+            setAutoFetchPaused(false)
+            setLastError('')
             setSettingsMeta({
                 default_password_warning: Boolean(data.admin?.default_password_warning),
                 env_backed: Boolean(data.env_backed),
@@ -78,17 +106,31 @@ export default function Settings({ onRefresh, onMessage, authFetch, onForceLogou
                 model_aliases_text: JSON.stringify(data.model_aliases || {}, null, 2),
             })
         } catch (e) {
-            onMessage('error', t('settings.loadFailed'))
+            const detail = e?.message || t('settings.loadFailed')
+            setLastError(detail)
+            onMessage('error', detail)
+            setConsecutiveFailures((prev) => {
+                const next = prev + 1
+                if (isVercel && next >= MAX_AUTO_FETCH_FAILURES) {
+                    setAutoFetchPaused(true)
+                }
+                return next
+            })
             // eslint-disable-next-line no-console
             console.error(e)
         } finally {
             setLoading(false)
         }
-    }, [apiFetch, onMessage, t])
+    }, [apiFetch, autoFetchPaused, isVercel, onMessage, parseJSONResponse, t])
 
     useEffect(() => {
         loadSettings()
     }, [loadSettings])
+
+    const retryLoadSettings = () => {
+        setAutoFetchPaused(false)
+        loadSettings({ manual: true })
+    }
 
     const saveSettings = async () => {
         let claudeMapping = {}
@@ -228,6 +270,23 @@ export default function Settings({ onRefresh, onMessage, authFetch, onForceLogou
 
     return (
         <div className="space-y-6">
+            {autoFetchPaused && (
+                <div className="p-4 rounded-lg border border-destructive/30 bg-destructive/10 text-destructive flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4" />
+                        <span className="text-sm">
+                            {t('settings.autoFetchPaused', { count: consecutiveFailures, error: lastError || t('settings.loadFailed') })}
+                        </span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={retryLoadSettings}
+                        className="px-3 py-1.5 text-xs rounded-md border border-destructive/40 hover:bg-destructive/10"
+                    >
+                        {t('settings.retryLoad')}
+                    </button>
+                </div>
+            )}
             {settingsMeta.default_password_warning && (
                 <div className="p-4 rounded-lg border border-amber-300/30 bg-amber-500/10 text-amber-700 flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4" />

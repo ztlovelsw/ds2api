@@ -16,6 +16,7 @@ import (
 	"ds2api/internal/auth"
 	"ds2api/internal/config"
 	trans "ds2api/internal/deepseek/transport"
+	"ds2api/internal/devcapture"
 	"ds2api/internal/util"
 
 	"github.com/andybalholm/brotli"
@@ -27,6 +28,7 @@ var intFrom = util.IntFrom
 type Client struct {
 	Store      *config.Store
 	Auth       *auth.Resolver
+	capture    *devcapture.Store
 	regular    trans.Doer
 	stream     trans.Doer
 	fallback   *http.Client
@@ -39,6 +41,7 @@ func NewClient(store *config.Store, resolver *auth.Resolver) *Client {
 	return &Client{
 		Store:      store,
 		Auth:       resolver,
+		capture:    devcapture.Global(),
 		regular:    trans.New(60 * time.Second),
 		stream:     trans.New(0),
 		fallback:   &http.Client{Timeout: 60 * time.Second},
@@ -179,6 +182,7 @@ func (c *Client) CallCompletion(ctx context.Context, a *auth.RequestAuth, payloa
 	}
 	headers := c.authHeaders(a.DeepSeekToken)
 	headers["x-ds-pow-response"] = powResp
+	captureSession := c.capture.Start("deepseek_completion", DeepSeekCompletionURL, a.AccountID, payload)
 	attempts := 0
 	for attempts < maxAttempts {
 		resp, err := c.streamPost(ctx, DeepSeekCompletionURL, headers, payload)
@@ -188,7 +192,13 @@ func (c *Client) CallCompletion(ctx context.Context, a *auth.RequestAuth, payloa
 			continue
 		}
 		if resp.StatusCode == http.StatusOK {
+			if captureSession != nil {
+				resp.Body = captureSession.WrapBody(resp.Body, resp.StatusCode)
+			}
 			return resp, nil
+		}
+		if captureSession != nil {
+			resp.Body = captureSession.WrapBody(resp.Body, resp.StatusCode)
 		}
 		_ = resp.Body.Close()
 		attempts++

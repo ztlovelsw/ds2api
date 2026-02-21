@@ -86,7 +86,7 @@ Manually build WebUI to `static/admin/`:
 go test ./...
 
 # End-to-end live tests (real accounts)
-./scripts/testsuite/run-live.sh
+./tests/scripts/run-live.sh
 ```
 
 ## Project Structure

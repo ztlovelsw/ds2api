@@ -11,6 +11,7 @@ type toolStreamSieveState struct {
 	capture        strings.Builder
 	capturing      bool
 	recentTextTail string
+	disableDeltas  bool
 	toolNameSent   bool
 	toolName       string
 	toolArgsStart  int
@@ -35,6 +36,7 @@ const toolSieveCaptureLimit = 8 * 1024
 const toolSieveContextTailLimit = 256
 
 func (s *toolStreamSieveState) resetIncrementalToolState() {
+	s.disableDeltas = false
 	s.toolNameSent = false
 	s.toolName = ""
 	s.toolArgsStart = -1
@@ -239,16 +241,7 @@ func consumeToolCapture(state *toolStreamSieveState, toolNames []string) (prefix
 	}
 	parsed := util.ParseStandaloneToolCalls(obj, toolNames)
 	if len(parsed) == 0 {
-		if state.toolNameSent {
-			return prefixPart, nil, suffixPart, true
-		}
 		return captured, nil, "", true
-	}
-	if state.toolNameSent {
-		if len(parsed) > 1 {
-			return prefixPart, parsed[1:], suffixPart, true
-		}
-		return prefixPart, nil, suffixPart, true
 	}
 	return prefixPart, parsed, suffixPart, true
 }
@@ -296,6 +289,9 @@ func extractJSONObjectFrom(text string, start int) (string, int, bool) {
 }
 
 func buildIncrementalToolDeltas(state *toolStreamSieveState) []toolCallDelta {
+	if state.disableDeltas {
+		return nil
+	}
 	captured := state.capture.String()
 	if captured == "" {
 		return nil
@@ -310,6 +306,16 @@ func buildIncrementalToolDeltas(state *toolStreamSieveState) []toolCallDelta {
 		return nil
 	}
 	if insideCodeFence(state.recentTextTail + captured[:start]) {
+		return nil
+	}
+	certainSingle, hasMultiple := classifyToolCallsIncrementalSafety(captured, keyIdx)
+	if hasMultiple {
+		state.disableDeltas = true
+		return nil
+	}
+	if !certainSingle {
+		// In uncertain phases (e.g. first call arrived but array not closed yet),
+		// avoid speculative deltas and wait for final parsed tool_calls payload.
 		return nil
 	}
 	callStart, ok := findFirstToolCallObjectStart(captured, keyIdx)
@@ -361,6 +367,68 @@ func buildIncrementalToolDeltas(state *toolStreamSieveState) []toolCallDelta {
 		state.toolArgsDone = true
 	}
 	return deltas
+}
+
+func classifyToolCallsIncrementalSafety(text string, keyIdx int) (certainSingle bool, hasMultiple bool) {
+	arrStart, ok := findToolCallsArrayStart(text, keyIdx)
+	if !ok {
+		return false, false
+	}
+	i := skipSpaces(text, arrStart+1)
+	if i >= len(text) || text[i] != '{' {
+		return false, false
+	}
+	count := 0
+	depth := 0
+	quote := byte(0)
+	escaped := false
+	for ; i < len(text); i++ {
+		ch := text[i]
+		if quote != 0 {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if ch == '\\' {
+				escaped = true
+				continue
+			}
+			if ch == quote {
+				quote = 0
+			}
+			continue
+		}
+		if ch == '"' || ch == '\'' {
+			quote = ch
+			continue
+		}
+		if ch == '{' {
+			if depth == 0 {
+				count++
+				if count > 1 {
+					return false, true
+				}
+			}
+			depth++
+			continue
+		}
+		if ch == '}' {
+			if depth > 0 {
+				depth--
+			}
+			continue
+		}
+		if ch == ',' && depth == 0 {
+			// top-level separator means at least one more tool call exists
+			// (or is expected). Treat as multi-call and stop incremental deltas.
+			return false, true
+		}
+		if ch == ']' && depth == 0 {
+			return count == 1, false
+		}
+	}
+	// array not closed yet: still uncertain whether more calls will appear
+	return false, false
 }
 
 func findFirstToolCallObjectStart(text string, keyIdx int) (int, bool) {

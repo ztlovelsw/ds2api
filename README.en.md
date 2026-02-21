@@ -283,6 +283,9 @@ cp opencode.json.example opencode.json
 | `DS2API_ACCOUNT_QUEUE_SIZE` | Alias (legacy compat) | — |
 | `DS2API_VERCEL_INTERNAL_SECRET` | Vercel hybrid streaming internal auth | Falls back to `DS2API_ADMIN_KEY` |
 | `DS2API_VERCEL_STREAM_LEASE_TTL_SECONDS` | Stream lease TTL seconds | `900` |
+| `DS2API_DEV_PACKET_CAPTURE` | Local dev packet capture switch (record recent request/response bodies) | Enabled by default on non-Vercel local runtime |
+| `DS2API_DEV_PACKET_CAPTURE_LIMIT` | Number of captured sessions to retain (auto-evict overflow) | `5` |
+| `DS2API_DEV_PACKET_CAPTURE_MAX_BODY_BYTES` | Max recorded bytes per captured response body | `2097152` |
 | `VERCEL_TOKEN` | Vercel sync token | — |
 | `VERCEL_PROJECT_ID` | Vercel project ID | — |
 | `VERCEL_TEAM_ID` | Vercel team ID | — |
@@ -321,6 +324,29 @@ When `tools` is present in the request, DS2API performs anti-leak handling:
 3. Confirmed toolcall JSON fragments are never leaked into `delta.content`
 4. Natural language before/after toolcalls keeps original order, with incremental argument output supported
 
+## Local Dev Packet Capture
+
+This is for debugging issues such as Responses reasoning streaming and tool-call handoff. When enabled, DS2API stores the latest N DeepSeek conversation payload pairs (request body + upstream response body), defaulting to 5 entries with auto-eviction.
+
+Enable example:
+
+```bash
+DS2API_DEV_PACKET_CAPTURE=true \
+DS2API_DEV_PACKET_CAPTURE_LIMIT=5 \
+go run ./cmd/ds2api
+```
+
+Inspect/clear (Admin JWT required):
+
+- `GET /admin/dev/captures`: list captured items (newest first)
+- `DELETE /admin/dev/captures`: clear captured items
+
+Response fields include:
+
+- `request_body`: full payload sent to DeepSeek
+- `response_body`: concatenated raw upstream stream body text
+- `response_truncated`: whether body-size truncation happened
+
 ## Project Structure
 
 ```text
@@ -350,8 +376,10 @@ ds2api/
 │       ├── components/      # AccountManager / ApiTester / BatchImport / VercelSync / Login / LandingPage
 │       └── locales/         # Language packs (zh.json / en.json)
 ├── scripts/
-│   ├── build-webui.sh       # Manual WebUI build script
-│   └── testsuite/           # Testsuite runner scripts
+│   └── build-webui.sh       # Manual WebUI build script
+├── tests/
+│   ├── compat/              # Compatibility fixtures and expected outputs
+│   └── scripts/             # Unified test script entrypoints (unit/e2e)
 ├── static/admin/            # WebUI build output (not committed to Git)
 ├── .github/
 │   ├── workflows/           # GitHub Actions (Release artifact automation)
@@ -379,11 +407,11 @@ ds2api/
 ## Testing
 
 ```bash
-# Unit tests
-go test ./...
+# Unit tests (Go + Node)
+./tests/scripts/run-unit-all.sh
 
 # One-command live end-to-end tests (real accounts, full request/response logs)
-./scripts/testsuite/run-live.sh
+./tests/scripts/run-live.sh
 
 # Or with custom flags
 go run ./cmd/ds2api-tests \

@@ -31,7 +31,7 @@ func TestNormalizeOpenAIChatRequestWithConfigInterface(t *testing.T) {
 		"model":    "my-model",
 		"messages": []any{map[string]any{"role": "user", "content": "hello"}},
 	}
-	out, err := normalizeOpenAIChatRequest(cfg, req)
+	out, err := normalizeOpenAIChatRequest(cfg, req, "")
 	if err != nil {
 		t.Fatalf("normalizeOpenAIChatRequest error: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestNormalizeOpenAIResponsesRequestWideInputPolicyFromInterface(t *testing.
 	_, err := normalizeOpenAIResponsesRequest(mockOpenAIConfig{
 		aliases:   map[string]string{},
 		wideInput: false,
-	}, req)
+	}, req, "")
 	if err == nil {
 		t.Fatal("expected error when wide input is disabled and only input is provided")
 	}
@@ -60,7 +60,7 @@ func TestNormalizeOpenAIResponsesRequestWideInputPolicyFromInterface(t *testing.
 	out, err := normalizeOpenAIResponsesRequest(mockOpenAIConfig{
 		aliases:   map[string]string{},
 		wideInput: true,
-	}, req)
+	}, req, "")
 	if err != nil {
 		t.Fatalf("unexpected error when wide input is enabled: %v", err)
 	}

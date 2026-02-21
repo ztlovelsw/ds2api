@@ -3,7 +3,15 @@ import { Cloud, ArrowRight, ExternalLink, Info, CheckCircle2, XCircle, RefreshCw
 import clsx from 'clsx'
 import { useI18n } from '../i18n'
 
-export default function VercelSync({ onMessage, authFetch }) {
+const MAX_POLL_FAILURES = 3
+
+function pollDelayMs(attempt) {
+    if (attempt <= 0) return 15000
+    if (attempt === 1) return 30000
+    return 60000
+}
+
+export default function VercelSync({ onMessage, authFetch, isVercel = false }) {
     const { t } = useI18n()
     const [vercelToken, setVercelToken] = useState('')
     const [projectId, setProjectId] = useState('')
@@ -12,20 +20,42 @@ export default function VercelSync({ onMessage, authFetch }) {
     const [result, setResult] = useState(null)
     const [preconfig, setPreconfig] = useState(null)
     const [syncStatus, setSyncStatus] = useState(null)
+    const [pollPaused, setPollPaused] = useState(false)
+    const [pollFailures, setPollFailures] = useState(0)
+    const [nextRetryAt, setNextRetryAt] = useState(null)
 
     const apiFetch = authFetch || fetch
 
-    const fetchSyncStatus = useCallback(async () => {
+    const fetchSyncStatus = useCallback(async ({ manual = false } = {}) => {
         try {
             const res = await apiFetch('/admin/vercel/status')
-            if (res.ok) {
-                const data = await res.json()
-                setSyncStatus(data)
+            if (!res.ok) {
+                throw new Error(`status ${res.status}`)
             }
+            const data = await res.json()
+            setSyncStatus(data)
+            setPollFailures(0)
+            setPollPaused(false)
+            setNextRetryAt(null)
         } catch (e) {
+            setPollFailures((prev) => {
+                const next = prev + 1
+                if (isVercel) {
+                    if (next >= MAX_POLL_FAILURES) {
+                        setPollPaused(true)
+                        setNextRetryAt(null)
+                    } else {
+                        setNextRetryAt(Date.now() + pollDelayMs(next))
+                    }
+                }
+                return next
+            })
+            if (manual) {
+                onMessage('error', t('vercel.networkError'))
+            }
             console.error('Failed to fetch sync status:', e)
         }
-    }, [apiFetch])
+    }, [apiFetch, isVercel, onMessage, t])
 
     useEffect(() => {
         const loadPreconfig = async () => {
@@ -43,10 +73,31 @@ export default function VercelSync({ onMessage, authFetch }) {
         }
         loadPreconfig()
         fetchSyncStatus()
-        // Poll every 15s to detect config changes
-        const interval = setInterval(fetchSyncStatus, 15000)
-        return () => clearInterval(interval)
     }, [fetchSyncStatus])
+
+    useEffect(() => {
+        if (!isVercel) {
+            const interval = setInterval(() => {
+                fetchSyncStatus()
+            }, 15000)
+            return () => clearInterval(interval)
+        }
+        if (pollPaused) {
+            return undefined
+        }
+        const delay = nextRetryAt && nextRetryAt > Date.now() ? nextRetryAt - Date.now() : pollDelayMs(pollFailures)
+        const timer = setTimeout(() => {
+            fetchSyncStatus()
+        }, Math.max(1000, delay))
+        return () => clearTimeout(timer)
+    }, [fetchSyncStatus, isVercel, nextRetryAt, pollFailures, pollPaused])
+
+    const handleManualRefresh = () => {
+        setPollPaused(false)
+        setPollFailures(0)
+        setNextRetryAt(null)
+        fetchSyncStatus({ manual: true })
+    }
 
     const handleSync = async () => {
         const tokenToUse = preconfig?.has_token && !vercelToken ? '__USE_PRECONFIG__' : vercelToken
@@ -122,6 +173,20 @@ export default function VercelSync({ onMessage, authFetch }) {
                     <p className="text-muted-foreground text-sm mt-1">
                         {t('vercel.description')}
                     </p>
+                    {pollPaused && (
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <p className="text-xs text-destructive">
+                                {t('vercel.pollPaused', { count: pollFailures })}
+                            </p>
+                            <button
+                                type="button"
+                                onClick={handleManualRefresh}
+                                className="px-2 py-1 text-xs rounded border border-border hover:bg-secondary/50"
+                            >
+                                {t('vercel.manualRefresh')}
+                            </button>
+                        </div>
+                    )}
                     {syncStatus?.last_sync_time && (
                         <p className="text-xs text-muted-foreground/60 mt-1.5 flex items-center gap-1">
                             <RefreshCw className="w-3 h-3" />

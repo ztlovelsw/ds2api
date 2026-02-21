@@ -518,7 +518,7 @@ curl http://127.0.0.1:5001/v1/chat/completions \
 建议在发布前执行完整的端到端测试集（使用真实账号）：
 
 ```bash
-./scripts/testsuite/run-live.sh
+./tests/scripts/run-live.sh
 ```
 
 可自定义参数：
