@@ -1,0 +1,181 @@
+package openai
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+)
+
+func normalizeResponsesInputItem(m map[string]any) map[string]any {
+	if m == nil {
+		return nil
+	}
+
+	role := strings.ToLower(strings.TrimSpace(asString(m["role"])))
+	if role != "" {
+		content := m["content"]
+		if content == nil {
+			if txt, _ := m["text"].(string); strings.TrimSpace(txt) != "" {
+				content = txt
+			}
+		}
+		if content == nil {
+			return nil
+		}
+		return map[string]any{
+			"role":    role,
+			"content": content,
+		}
+	}
+
+	itemType := strings.ToLower(strings.TrimSpace(asString(m["type"])))
+	switch itemType {
+	case "message", "input_message":
+		content := m["content"]
+		if content == nil {
+			if txt, _ := m["text"].(string); strings.TrimSpace(txt) != "" {
+				content = txt
+			}
+		}
+		if content == nil {
+			return nil
+		}
+		role := strings.ToLower(strings.TrimSpace(asString(m["role"])))
+		if role == "" {
+			role = "user"
+		}
+		return map[string]any{
+			"role":    role,
+			"content": content,
+		}
+	case "function_call_output", "tool_result":
+		content := m["output"]
+		if content == nil {
+			content = m["content"]
+		}
+		if content == nil {
+			content = ""
+		}
+		out := map[string]any{
+			"role":    "tool",
+			"content": content,
+		}
+		if callID := strings.TrimSpace(asString(m["call_id"])); callID != "" {
+			out["tool_call_id"] = callID
+		} else if callID = strings.TrimSpace(asString(m["tool_call_id"])); callID != "" {
+			out["tool_call_id"] = callID
+		}
+		if name := strings.TrimSpace(asString(m["name"])); name != "" {
+			out["name"] = name
+		} else if name = strings.TrimSpace(asString(m["tool_name"])); name != "" {
+			out["name"] = name
+		}
+		return out
+	case "function_call", "tool_call":
+		name := strings.TrimSpace(asString(m["name"]))
+		var fn map[string]any
+		if rawFn, ok := m["function"].(map[string]any); ok {
+			fn = rawFn
+			if name == "" {
+				name = strings.TrimSpace(asString(fn["name"]))
+			}
+		}
+		if name == "" {
+			return nil
+		}
+
+		var argsRaw any
+		if v, ok := m["arguments"]; ok {
+			argsRaw = v
+		} else if v, ok := m["input"]; ok {
+			argsRaw = v
+		}
+		if argsRaw == nil && fn != nil {
+			if v, ok := fn["arguments"]; ok {
+				argsRaw = v
+			} else if v, ok := fn["input"]; ok {
+				argsRaw = v
+			}
+		}
+
+		functionPayload := map[string]any{
+			"name":      name,
+			"arguments": stringifyToolCallArguments(argsRaw),
+		}
+		call := map[string]any{
+			"type":     "function",
+			"function": functionPayload,
+		}
+		if callID := strings.TrimSpace(asString(m["call_id"])); callID != "" {
+			call["id"] = callID
+		} else if callID = strings.TrimSpace(asString(m["id"])); callID != "" {
+			call["id"] = callID
+		}
+		return map[string]any{
+			"role":       "assistant",
+			"tool_calls": []any{call},
+		}
+	case "input_text":
+		if txt, _ := m["text"].(string); strings.TrimSpace(txt) != "" {
+			return map[string]any{
+				"role":    "user",
+				"content": txt,
+			}
+		}
+	}
+
+	if txt, _ := m["text"].(string); strings.TrimSpace(txt) != "" {
+		return map[string]any{
+			"role":    "user",
+			"content": txt,
+		}
+	}
+	if content, ok := m["content"]; ok {
+		if strings.TrimSpace(normalizeOpenAIContentForPrompt(content)) != "" {
+			return map[string]any{
+				"role":    "user",
+				"content": content,
+			}
+		}
+	}
+	return nil
+}
+
+func normalizeResponsesFallbackPart(m map[string]any) string {
+	if m == nil {
+		return ""
+	}
+	if t, _ := m["type"].(string); strings.EqualFold(strings.TrimSpace(t), "input_text") {
+		if txt, _ := m["text"].(string); strings.TrimSpace(txt) != "" {
+			return txt
+		}
+	}
+	if txt, _ := m["text"].(string); strings.TrimSpace(txt) != "" {
+		return txt
+	}
+	if content, ok := m["content"]; ok {
+		if normalized := strings.TrimSpace(normalizeOpenAIContentForPrompt(content)); normalized != "" {
+			return normalized
+		}
+	}
+	return strings.TrimSpace(fmt.Sprintf("%v", m))
+}
+
+func stringifyToolCallArguments(v any) string {
+	switch x := v.(type) {
+	case nil:
+		return "{}"
+	case string:
+		s := strings.TrimSpace(x)
+		if s == "" {
+			return "{}"
+		}
+		return s
+	default:
+		b, err := json.Marshal(x)
+		if err != nil || len(b) == 0 {
+			return "{}"
+		}
+		return string(b)
+	}
+}

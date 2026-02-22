@@ -32,4 +32,3 @@ func TestWriteClaudeErrorIncludesUnifiedFields(t *testing.T) {
 		t.Fatal("expected param field")
 	}
 }
-

@@ -32,4 +32,3 @@ func TestWriteOpenAIErrorIncludesUnifiedFields(t *testing.T) {
 		t.Fatal("expected param field")
 	}
 }
-
