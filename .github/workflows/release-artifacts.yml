@@ -174,10 +174,19 @@ jobs:
           fi
 
       - name: Upload Release Assets
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.RELEASE_TAG }}
-          files: |
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${RELEASE_TAG}"
+          FILES=(
             dist/*.tar.gz
             dist/*.zip
             dist/sha256sums.txt
+          )
+
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release upload "${TAG}" "${FILES[@]}" --clobber
+          else
+            gh release create "${TAG}" "${FILES[@]}" --title "${TAG}" --notes ""
+          fi
