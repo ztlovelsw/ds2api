@@ -6,7 +6,18 @@ import (
 	openaifmt "ds2api/internal/format/openai"
 )
 
+func (s *responsesStreamRuntime) nextSequence() int {
+	s.sequence++
+	return s.sequence
+}
+
 func (s *responsesStreamRuntime) sendEvent(event string, payload map[string]any) {
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	if _, ok := payload["sequence_number"]; !ok {
+		payload["sequence_number"] = s.nextSequence()
+	}
 	b, _ := json.Marshal(payload)
 	_, _ = s.w.Write([]byte("event: " + event + "\n"))
 	_, _ = s.w.Write([]byte("data: "))
@@ -31,22 +42,20 @@ func (s *responsesStreamRuntime) sendDone() {
 func (s *responsesStreamRuntime) processToolStreamEvents(events []toolStreamEvent, emitContent bool) {
 	for _, evt := range events {
 		if emitContent && evt.Content != "" {
-			s.sendEvent("response.output_text.delta", openaifmt.BuildResponsesTextDeltaPayload(s.responseID, evt.Content))
+			s.emitTextDelta(evt.Content)
 		}
 		if len(evt.ToolCallDeltas) > 0 {
 			if !s.emitEarlyToolDeltas {
 				continue
 			}
-			formatted := formatIncrementalStreamToolCallDeltas(evt.ToolCallDeltas, s.streamToolCallIDs)
-			if len(formatted) == 0 {
+			filtered := filterIncrementalToolCallDeltasByAllowed(evt.ToolCallDeltas, s.toolNames, s.functionNames)
+			if len(filtered) == 0 {
 				continue
 			}
-			s.toolCallsEmitted = true
-			s.sendEvent("response.output_tool_call.delta", openaifmt.BuildResponsesToolCallDeltaPayload(s.responseID, formatted))
-			s.emitFunctionCallDeltaEvents(evt.ToolCallDeltas)
+			s.emitFunctionCallDeltaEvents(filtered)
 		}
 		if len(evt.ToolCalls) > 0 {
-			s.emitToolCallsDone(evt.ToolCalls)
+			s.emitFunctionCallDoneEvents(evt.ToolCalls)
 		}
 	}
 }

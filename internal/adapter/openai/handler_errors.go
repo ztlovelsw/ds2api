@@ -3,11 +3,18 @@ package openai
 import "net/http"
 
 func writeOpenAIError(w http.ResponseWriter, status int, message string) {
+	writeOpenAIErrorWithCode(w, status, message, "")
+}
+
+func writeOpenAIErrorWithCode(w http.ResponseWriter, status int, message, code string) {
+	if code == "" {
+		code = openAIErrorCode(status)
+	}
 	writeJSON(w, status, map[string]any{
 		"error": map[string]any{
 			"message": message,
 			"type":    openAIErrorType(status),
-			"code":    openAIErrorCode(status),
+			"code":    code,
 			"param":   nil,
 		},
 	})

@@ -11,25 +11,101 @@ import (
 	"github.com/google/uuid"
 )
 
-func (s *responsesStreamRuntime) emitToolCallsDone(calls []util.ParsedToolCall) {
-	if len(calls) == 0 {
+func (s *responsesStreamRuntime) ensureMessageItemID() string {
+	if strings.TrimSpace(s.messageItemID) != "" {
+		return s.messageItemID
+	}
+	s.messageItemID = "msg_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	return s.messageItemID
+}
+
+func (s *responsesStreamRuntime) messageOutputIndex() int {
+	if strings.TrimSpace(s.thinking.String()) != "" {
+		return 1
+	}
+	return 0
+}
+
+func (s *responsesStreamRuntime) ensureMessageItemAdded() {
+	if s.messageAdded {
 		return
 	}
-	sig := toolCallListSignature(calls)
-	if sig != "" && s.toolCallsDoneSigs[sig] {
+	itemID := s.ensureMessageItemID()
+	item := map[string]any{
+		"id":     itemID,
+		"type":   "message",
+		"role":   "assistant",
+		"status": "in_progress",
+	}
+	s.sendEvent(
+		"response.output_item.added",
+		openaifmt.BuildResponsesOutputItemAddedPayload(s.responseID, itemID, s.messageOutputIndex(), item),
+	)
+	s.messageAdded = true
+}
+
+func (s *responsesStreamRuntime) ensureMessageContentPartAdded() {
+	if s.messagePartAdded {
 		return
 	}
-	if sig != "" {
-		s.toolCallsDoneSigs[sig] = true
-	}
-	formatted := formatFinalStreamToolCallsWithStableIDs(calls, s.streamToolCallIDs)
-	if len(formatted) == 0 {
+	s.ensureMessageItemAdded()
+	s.sendEvent(
+		"response.content_part.added",
+		openaifmt.BuildResponsesContentPartAddedPayload(
+			s.responseID,
+			s.ensureMessageItemID(),
+			s.messageOutputIndex(),
+			0,
+			map[string]any{"type": "output_text", "text": ""},
+		),
+	)
+	s.messagePartAdded = true
+}
+
+func (s *responsesStreamRuntime) emitTextDelta(content string) {
+	if strings.TrimSpace(content) == "" {
 		return
 	}
-	s.toolCallsEmitted = true
-	s.toolCallsDoneEmitted = true
-	s.sendEvent("response.output_tool_call.done", openaifmt.BuildResponsesToolCallDonePayload(s.responseID, formatted))
-	s.emitFunctionCallDoneEvents(calls)
+	s.ensureMessageContentPartAdded()
+	s.visibleText.WriteString(content)
+	s.sendEvent("response.output_text.delta", openaifmt.BuildResponsesTextDeltaPayload(s.responseID, content))
+}
+
+func (s *responsesStreamRuntime) closeMessageItem() {
+	if !s.messageAdded {
+		return
+	}
+	itemID := s.ensureMessageItemID()
+	text := s.visibleText.String()
+	if s.messagePartAdded {
+		s.sendEvent(
+			"response.content_part.done",
+			openaifmt.BuildResponsesContentPartDonePayload(
+				s.responseID,
+				itemID,
+				s.messageOutputIndex(),
+				0,
+				map[string]any{"type": "output_text", "text": text},
+			),
+		)
+		s.messagePartAdded = false
+	}
+	item := map[string]any{
+		"id":     itemID,
+		"type":   "message",
+		"role":   "assistant",
+		"status": "completed",
+		"content": []map[string]any{
+			{
+				"type": "output_text",
+				"text": text,
+			},
+		},
+	}
+	s.sendEvent(
+		"response.output_item.done",
+		openaifmt.BuildResponsesOutputItemDonePayload(s.responseID, itemID, s.messageOutputIndex(), item),
+	)
 }
 
 func (s *responsesStreamRuntime) ensureReasoningItemID() string {
@@ -65,12 +141,47 @@ func (s *responsesStreamRuntime) functionOutputBaseIndex() int {
 	return 0
 }
 
+func (s *responsesStreamRuntime) functionOutputIndex(callIndex int) int {
+	return s.functionOutputBaseIndex() + callIndex
+}
+
+func (s *responsesStreamRuntime) ensureFunctionItemAdded(callIndex int, name string) {
+	if strings.TrimSpace(name) != "" {
+		s.functionNames[callIndex] = strings.TrimSpace(name)
+	}
+	if s.functionAdded[callIndex] {
+		return
+	}
+	fnName := strings.TrimSpace(s.functionNames[callIndex])
+	if fnName == "" {
+		return
+	}
+	outputIndex := s.functionOutputIndex(callIndex)
+	itemID := s.ensureFunctionItemID(outputIndex)
+	callID := s.ensureToolCallID(callIndex)
+	item := map[string]any{
+		"id":        itemID,
+		"type":      "function_call",
+		"call_id":   callID,
+		"name":      fnName,
+		"arguments": "{}",
+		"status":    "in_progress",
+	}
+	s.sendEvent(
+		"response.output_item.added",
+		openaifmt.BuildResponsesOutputItemAddedPayload(s.responseID, itemID, outputIndex, item),
+	)
+	s.functionAdded[callIndex] = true
+	s.toolCallsEmitted = true
+}
+
 func (s *responsesStreamRuntime) emitFunctionCallDeltaEvents(deltas []toolCallDelta) {
 	for _, d := range deltas {
+		s.ensureFunctionItemAdded(d.Index, d.Name)
 		if strings.TrimSpace(d.Arguments) == "" {
 			continue
 		}
-		outputIndex := s.functionOutputBaseIndex() + d.Index
+		outputIndex := s.functionOutputIndex(d.Index)
 		itemID := s.ensureFunctionItemID(outputIndex)
 		callID := s.ensureToolCallID(d.Index)
 		s.sendEvent(
@@ -86,6 +197,8 @@ func (s *responsesStreamRuntime) emitFunctionCallDoneEvents(calls []util.ParsedT
 		if strings.TrimSpace(tc.Name) == "" {
 			continue
 		}
+		s.ensureFunctionItemAdded(idx, tc.Name)
+
 		outputIndex := base + idx
 		if s.functionDone[outputIndex] {
 			continue
@@ -93,11 +206,25 @@ func (s *responsesStreamRuntime) emitFunctionCallDoneEvents(calls []util.ParsedT
 		itemID := s.ensureFunctionItemID(outputIndex)
 		callID := s.ensureToolCallID(idx)
 		argsBytes, _ := json.Marshal(tc.Input)
+		args := string(argsBytes)
 		s.sendEvent(
 			"response.function_call_arguments.done",
-			openaifmt.BuildResponsesFunctionCallArgumentsDonePayload(s.responseID, itemID, outputIndex, callID, tc.Name, string(argsBytes)),
+			openaifmt.BuildResponsesFunctionCallArgumentsDonePayload(s.responseID, itemID, outputIndex, callID, tc.Name, args),
+		)
+		item := map[string]any{
+			"id":        itemID,
+			"type":      "function_call",
+			"call_id":   callID,
+			"name":      tc.Name,
+			"arguments": args,
+			"status":    "completed",
+		}
+		s.sendEvent(
+			"response.output_item.done",
+			openaifmt.BuildResponsesOutputItemDonePayload(s.responseID, itemID, outputIndex, item),
 		)
 		s.functionDone[outputIndex] = true
+		s.toolCallsDoneEmitted = true
 	}
 }
 
@@ -132,41 +259,12 @@ func (s *responsesStreamRuntime) alignCompletedOutputCallIDs(obj map[string]any)
 		if m == nil {
 			continue
 		}
-		typ, _ := m["type"].(string)
-		switch typ {
-		case "function_call":
-			if functionIdx < len(ordered) {
-				m["call_id"] = ordered[functionIdx]
-				functionIdx++
-			}
-		case "tool_calls":
-			tcArr, _ := m["tool_calls"].([]any)
-			for i, raw := range tcArr {
-				tc, _ := raw.(map[string]any)
-				if tc == nil {
-					continue
-				}
-				if i < len(ordered) {
-					tc["id"] = ordered[i]
-				}
-			}
+		if m["type"] != "function_call" {
+			continue
+		}
+		if functionIdx < len(ordered) {
+			m["call_id"] = ordered[functionIdx]
+			functionIdx++
 		}
 	}
-}
-
-func toolCallListSignature(calls []util.ParsedToolCall) string {
-	if len(calls) == 0 {
-		return ""
-	}
-	var b strings.Builder
-	for i, tc := range calls {
-		if i > 0 {
-			b.WriteString("|")
-		}
-		b.WriteString(strings.TrimSpace(tc.Name))
-		b.WriteString(":")
-		args, _ := json.Marshal(tc.Input)
-		b.Write(args)
-	}
-	return b.String()
 }

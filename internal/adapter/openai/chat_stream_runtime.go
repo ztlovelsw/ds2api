@@ -33,6 +33,7 @@ type chatStreamRuntime struct {
 
 	toolSieve         toolStreamSieveState
 	streamToolCallIDs map[int]string
+	streamToolNames   map[int]string
 	thinking          strings.Builder
 	text              strings.Builder
 }
@@ -65,6 +66,7 @@ func newChatStreamRuntime(
 		bufferToolContent:   bufferToolContent,
 		emitEarlyToolDeltas: emitEarlyToolDeltas,
 		streamToolCallIDs:   map[int]string{},
+		streamToolNames:     map[int]string{},
 	}
 }
 
@@ -211,7 +213,11 @@ func (s *chatStreamRuntime) onParsed(parsed sse.LineResult) streamengine.ParsedD
 						if !s.emitEarlyToolDeltas {
 							continue
 						}
-						formatted := formatIncrementalStreamToolCallDeltas(evt.ToolCallDeltas, s.streamToolCallIDs)
+						filtered := filterIncrementalToolCallDeltasByAllowed(evt.ToolCallDeltas, s.toolNames, s.streamToolNames)
+						if len(filtered) == 0 {
+							continue
+						}
+						formatted := formatIncrementalStreamToolCallDeltas(filtered, s.streamToolCallIDs)
 						if len(formatted) == 0 {
 							continue
 						}

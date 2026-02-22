@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"ds2api/internal/config"
 	openaifmt "ds2api/internal/format/openai"
 	"ds2api/internal/sse"
 	streamengine "ds2api/internal/stream"
@@ -19,6 +20,8 @@ type responsesStreamRuntime struct {
 	model       string
 	finalPrompt string
 	toolNames   []string
+	traceID     string
+	toolChoice  util.ToolChoicePolicy
 
 	thinkingEnabled bool
 	searchEnabled   bool
@@ -32,11 +35,19 @@ type responsesStreamRuntime struct {
 	thinkingSieve     toolStreamSieveState
 	thinking          strings.Builder
 	text              strings.Builder
+	visibleText       strings.Builder
 	streamToolCallIDs map[int]string
 	streamFunctionIDs map[int]string
 	functionDone      map[int]bool
+	functionAdded     map[int]bool
+	functionNames     map[int]string
 	toolCallsDoneSigs map[string]bool
 	reasoningItemID   string
+	messageItemID     string
+	messageAdded      bool
+	messagePartAdded  bool
+	sequence          int
+	failed            bool
 
 	persistResponse func(obj map[string]any)
 }
@@ -53,6 +64,8 @@ func newResponsesStreamRuntime(
 	toolNames []string,
 	bufferToolContent bool,
 	emitEarlyToolDeltas bool,
+	toolChoice util.ToolChoicePolicy,
+	traceID string,
 	persistResponse func(obj map[string]any),
 ) *responsesStreamRuntime {
 	return &responsesStreamRuntime{
@@ -70,7 +83,11 @@ func newResponsesStreamRuntime(
 		streamToolCallIDs:   map[int]string{},
 		streamFunctionIDs:   map[int]string{},
 		functionDone:        map[int]bool{},
+		functionAdded:       map[int]bool{},
+		functionNames:       map[int]string{},
 		toolCallsDoneSigs:   map[string]bool{},
+		toolChoice:          toolChoice,
+		traceID:             traceID,
 		persistResponse:     persistResponse,
 	}
 }
@@ -78,41 +95,90 @@ func newResponsesStreamRuntime(
 func (s *responsesStreamRuntime) finalize() {
 	finalThinking := s.thinking.String()
 	finalText := s.text.String()
-	if strings.TrimSpace(finalThinking) != "" {
-		s.sendEvent("response.reasoning_text.done", openaifmt.BuildResponsesReasoningTextDonePayload(s.responseID, s.ensureReasoningItemID(), 0, 0, finalThinking))
-	}
+
 	if s.bufferToolContent {
 		s.processToolStreamEvents(flushToolSieve(&s.sieve, s.toolNames), true)
 		s.processToolStreamEvents(flushToolSieve(&s.thinkingSieve, s.toolNames), false)
 	}
-	// Compatibility fallback: some streams only emit incremental tool deltas.
-	// Ensure final function_call_arguments.done is emitted at least once.
-	if s.toolCallsEmitted {
-		detected := util.ParseToolCalls(finalText, s.toolNames)
-		if len(detected) == 0 {
-			detected = util.ParseToolCalls(finalThinking, s.toolNames)
+
+	textParsed := util.ParseToolCallsDetailed(finalText, s.toolNames)
+	thinkingParsed := util.ParseToolCallsDetailed(finalThinking, s.toolNames)
+	detected := textParsed.Calls
+	if len(detected) == 0 {
+		detected = thinkingParsed.Calls
+	}
+	s.logToolPolicyRejections(textParsed, thinkingParsed)
+
+	if len(detected) > 0 {
+		s.toolCallsEmitted = true
+		if !s.toolCallsDoneEmitted {
+			s.emitFunctionCallDoneEvents(detected)
 		}
-		if len(detected) > 0 {
-			if !s.toolCallsDoneEmitted {
-				s.emitToolCallsDone(detected)
-			} else {
-				s.emitFunctionCallDoneEvents(detected)
-			}
+	}
+
+	s.closeMessageItem()
+
+	if s.toolChoice.IsRequired() && !s.hasFunctionCallDone() {
+		s.failed = true
+		message := "tool_choice requires at least one valid tool call."
+		failedResp := map[string]any{
+			"id":          s.responseID,
+			"type":        "response",
+			"object":      "response",
+			"model":       s.model,
+			"status":      "failed",
+			"output":      []any{},
+			"output_text": "",
+			"error": map[string]any{
+				"message": message,
+				"type":    "invalid_request_error",
+				"code":    "tool_choice_violation",
+				"param":   nil,
+			},
 		}
+		if s.persistResponse != nil {
+			s.persistResponse(failedResp)
+		}
+		s.sendEvent("response.failed", openaifmt.BuildResponsesFailedPayload(s.responseID, s.model, message, "tool_choice_violation"))
+		s.sendDone()
+		return
 	}
 
 	obj := openaifmt.BuildResponseObject(s.responseID, s.model, s.finalPrompt, finalThinking, finalText, s.toolNames)
 	if s.toolCallsEmitted {
 		s.alignCompletedOutputCallIDs(obj)
 	}
-	if s.toolCallsEmitted {
-		obj["status"] = "completed"
-	}
 	if s.persistResponse != nil {
 		s.persistResponse(obj)
 	}
 	s.sendEvent("response.completed", openaifmt.BuildResponsesCompletedPayload(obj))
 	s.sendDone()
+}
+
+func (s *responsesStreamRuntime) logToolPolicyRejections(textParsed, thinkingParsed util.ToolCallParseResult) {
+	logRejected := func(parsed util.ToolCallParseResult, channel string) {
+		if !parsed.RejectedByPolicy || len(parsed.RejectedToolNames) == 0 {
+			return
+		}
+		config.Logger.Warn(
+			"[responses] rejected tool calls by policy",
+			"trace_id", strings.TrimSpace(s.traceID),
+			"channel", channel,
+			"tool_choice_mode", s.toolChoice.Mode,
+			"rejected_tool_names", strings.Join(parsed.RejectedToolNames, ","),
+		)
+	}
+	logRejected(textParsed, "text")
+	logRejected(thinkingParsed, "thinking")
+}
+
+func (s *responsesStreamRuntime) hasFunctionCallDone() bool {
+	for _, done := range s.functionDone {
+		if done {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *responsesStreamRuntime) onParsed(parsed sse.LineResult) streamengine.ParsedDecision {
@@ -138,7 +204,6 @@ func (s *responsesStreamRuntime) onParsed(parsed sse.LineResult) streamengine.Pa
 			}
 			s.thinking.WriteString(p.Text)
 			s.sendEvent("response.reasoning.delta", openaifmt.BuildResponsesReasoningDeltaPayload(s.responseID, p.Text))
-			s.sendEvent("response.reasoning_text.delta", openaifmt.BuildResponsesReasoningTextDeltaPayload(s.responseID, s.ensureReasoningItemID(), 0, 0, p.Text))
 			if s.bufferToolContent {
 				s.processToolStreamEvents(processToolSieveChunk(&s.thinkingSieve, p.Text, s.toolNames), false)
 			}
@@ -147,7 +212,7 @@ func (s *responsesStreamRuntime) onParsed(parsed sse.LineResult) streamengine.Pa
 
 		s.text.WriteString(p.Text)
 		if !s.bufferToolContent {
-			s.sendEvent("response.output_text.delta", openaifmt.BuildResponsesTextDeltaPayload(s.responseID, p.Text))
+			s.emitTextDelta(p.Text)
 			continue
 		}
 		s.processToolStreamEvents(processToolSieveChunk(&s.sieve, p.Text, s.toolNames), true)

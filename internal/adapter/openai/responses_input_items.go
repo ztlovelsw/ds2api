@@ -4,9 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"ds2api/internal/config"
 )
 
 func normalizeResponsesInputItem(m map[string]any) map[string]any {
+	return normalizeResponsesInputItemWithState(m, nil)
+}
+
+func normalizeResponsesInputItemWithState(m map[string]any, callNameByID map[string]string) map[string]any {
 	if m == nil {
 		return nil
 	}
@@ -69,6 +75,15 @@ func normalizeResponsesInputItem(m map[string]any) map[string]any {
 			out["name"] = name
 		} else if name = strings.TrimSpace(asString(m["tool_name"])); name != "" {
 			out["name"] = name
+		} else if callID := strings.TrimSpace(asString(out["tool_call_id"])); callID != "" {
+			if inferred := strings.TrimSpace(callNameByID[callID]); inferred != "" {
+				out["name"] = inferred
+			} else {
+				config.Logger.Warn(
+					"[responses] unable to backfill tool result name from call_id",
+					"call_id", callID,
+				)
+			}
 		}
 		return out
 	case "function_call", "tool_call":
@@ -110,6 +125,9 @@ func normalizeResponsesInputItem(m map[string]any) map[string]any {
 			call["id"] = callID
 		} else if callID = strings.TrimSpace(asString(m["id"])); callID != "" {
 			call["id"] = callID
+		}
+		if callID := strings.TrimSpace(asString(call["id"])); callID != "" && callNameByID != nil {
+			callNameByID[callID] = name
 		}
 		return map[string]any{
 			"role":       "assistant",

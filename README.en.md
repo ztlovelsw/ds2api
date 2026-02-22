@@ -320,9 +320,10 @@ Queue limit = DS2API_ACCOUNT_MAX_QUEUE (default = recommended concurrency)
 When `tools` is present in the request, DS2API performs anti-leak handling:
 
 1. Toolcall feature matching is enabled only in **non-code-block context** (fenced examples are ignored)
-2. Once high-confidence features are matched (`tool_calls` + `name` + `arguments/input` start), `delta.tool_calls` is emitted immediately
-3. Confirmed toolcall JSON fragments are never leaked into `delta.content`
-4. Natural language before/after toolcalls keeps original order, with incremental argument output supported
+2. In `responses` stream mode, tool calls follow official item lifecycle events (`response.output_item.*`, `response.content_part.*`, `response.function_call_arguments.*`)
+3. Unknown tool names (outside declared `tools`) are rejected and are not emitted as valid tool calls
+4. `tool_choice` is enforced on `responses` (`auto`/`none`/`required`/forced function); required violations return HTTP `422` (non-stream) or `response.failed` (stream)
+5. Confirmed toolcall JSON fragments are never emitted as valid tool call events unless they pass policy checks
 
 ## Local Dev Packet Capture
 

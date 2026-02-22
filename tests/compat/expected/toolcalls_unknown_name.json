@@ -1,5 +1,3 @@
 {
-  "calls": [
-    {"name": "unknown_tool", "input": {"x": 1}}
-  ]
+  "calls": []
 }

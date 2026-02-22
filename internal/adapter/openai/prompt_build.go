@@ -2,13 +2,18 @@ package openai
 
 import (
 	"ds2api/internal/deepseek"
+	"ds2api/internal/util"
 )
 
 func buildOpenAIFinalPrompt(messagesRaw []any, toolsRaw any, traceID string) (string, []string) {
+	return buildOpenAIFinalPromptWithPolicy(messagesRaw, toolsRaw, traceID, util.DefaultToolChoicePolicy())
+}
+
+func buildOpenAIFinalPromptWithPolicy(messagesRaw []any, toolsRaw any, traceID string, toolPolicy util.ToolChoicePolicy) (string, []string) {
 	messages := normalizeOpenAIMessagesForPrompt(messagesRaw, traceID)
 	toolNames := []string{}
 	if tools, ok := toolsRaw.([]any); ok && len(tools) > 0 {
-		messages, toolNames = injectToolPrompt(messages, tools)
+		messages, toolNames = injectToolPrompt(messages, tools, toolPolicy)
 	}
 	return deepseek.MessagesPrepare(messages), toolNames
 }

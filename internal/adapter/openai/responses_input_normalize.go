@@ -59,6 +59,7 @@ func normalizeResponsesInputArray(items []any) []any {
 		return nil
 	}
 	out := make([]any, 0, len(items))
+	callNameByID := map[string]string{}
 	fallbackParts := make([]string, 0, len(items))
 	flushFallback := func() {
 		if len(fallbackParts) == 0 {
@@ -71,7 +72,7 @@ func normalizeResponsesInputArray(items []any) []any {
 	for _, item := range items {
 		switch x := item.(type) {
 		case map[string]any:
-			if msg := normalizeResponsesInputItem(x); msg != nil {
+			if msg := normalizeResponsesInputItemWithState(x, callNameByID); msg != nil {
 				flushFallback()
 				out = append(out, msg)
 				continue

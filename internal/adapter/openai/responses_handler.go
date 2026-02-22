@@ -11,10 +11,12 @@ import (
 	"github.com/google/uuid"
 
 	"ds2api/internal/auth"
+	"ds2api/internal/config"
 	"ds2api/internal/deepseek"
 	openaifmt "ds2api/internal/format/openai"
 	"ds2api/internal/sse"
 	streamengine "ds2api/internal/stream"
+	"ds2api/internal/util"
 )
 
 func (h *Handler) GetResponseByID(w http.ResponseWriter, r *http.Request) {
@@ -67,7 +69,8 @@ func (h *Handler) Responses(w http.ResponseWriter, r *http.Request) {
 		writeOpenAIError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	stdReq, err := normalizeOpenAIResponsesRequest(h.Store, req, requestTraceID(r))
+	traceID := requestTraceID(r)
+	stdReq, err := normalizeOpenAIResponsesRequest(h.Store, req, traceID)
 	if err != nil {
 		writeOpenAIError(w, http.StatusBadRequest, err.Error())
 		return
@@ -96,13 +99,13 @@ func (h *Handler) Responses(w http.ResponseWriter, r *http.Request) {
 
 	responseID := "resp_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 	if stdReq.Stream {
-		h.handleResponsesStream(w, r, resp, owner, responseID, stdReq.ResponseModel, stdReq.FinalPrompt, stdReq.Thinking, stdReq.Search, stdReq.ToolNames)
+		h.handleResponsesStream(w, r, resp, owner, responseID, stdReq.ResponseModel, stdReq.FinalPrompt, stdReq.Thinking, stdReq.Search, stdReq.ToolNames, stdReq.ToolChoice, traceID)
 		return
 	}
-	h.handleResponsesNonStream(w, resp, owner, responseID, stdReq.ResponseModel, stdReq.FinalPrompt, stdReq.Thinking, stdReq.ToolNames)
+	h.handleResponsesNonStream(w, resp, owner, responseID, stdReq.ResponseModel, stdReq.FinalPrompt, stdReq.Thinking, stdReq.ToolNames, stdReq.ToolChoice, traceID)
 }
 
-func (h *Handler) handleResponsesNonStream(w http.ResponseWriter, resp *http.Response, owner, responseID, model, finalPrompt string, thinkingEnabled bool, toolNames []string) {
+func (h *Handler) handleResponsesNonStream(w http.ResponseWriter, resp *http.Response, owner, responseID, model, finalPrompt string, thinkingEnabled bool, toolNames []string, toolChoice util.ToolChoicePolicy, traceID string) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -110,12 +113,26 @@ func (h *Handler) handleResponsesNonStream(w http.ResponseWriter, resp *http.Res
 		return
 	}
 	result := sse.CollectStream(resp, thinkingEnabled, true)
+	textParsed := util.ParseToolCallsDetailed(result.Text, toolNames)
+	thinkingParsed := util.ParseToolCallsDetailed(result.Thinking, toolNames)
+	logResponsesToolPolicyRejection(traceID, toolChoice, textParsed, "text")
+	logResponsesToolPolicyRejection(traceID, toolChoice, thinkingParsed, "thinking")
+
+	callCount := len(textParsed.Calls)
+	if callCount == 0 {
+		callCount = len(thinkingParsed.Calls)
+	}
+	if toolChoice.IsRequired() && callCount == 0 {
+		writeOpenAIErrorWithCode(w, http.StatusUnprocessableEntity, "tool_choice requires at least one valid tool call.", "tool_choice_violation")
+		return
+	}
+
 	responseObj := openaifmt.BuildResponseObject(responseID, model, finalPrompt, result.Thinking, result.Text, toolNames)
 	h.getResponseStore().put(owner, responseID, responseObj)
 	writeJSON(w, http.StatusOK, responseObj)
 }
 
-func (h *Handler) handleResponsesStream(w http.ResponseWriter, r *http.Request, resp *http.Response, owner, responseID, model, finalPrompt string, thinkingEnabled, searchEnabled bool, toolNames []string) {
+func (h *Handler) handleResponsesStream(w http.ResponseWriter, r *http.Request, resp *http.Response, owner, responseID, model, finalPrompt string, thinkingEnabled, searchEnabled bool, toolNames []string, toolChoice util.ToolChoicePolicy, traceID string) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -148,6 +165,8 @@ func (h *Handler) handleResponsesStream(w http.ResponseWriter, r *http.Request, 
 		toolNames,
 		bufferToolContent,
 		emitEarlyToolDeltas,
+		toolChoice,
+		traceID,
 		func(obj map[string]any) {
 			h.getResponseStore().put(owner, responseID, obj)
 		},
@@ -168,4 +187,17 @@ func (h *Handler) handleResponsesStream(w http.ResponseWriter, r *http.Request, 
 			streamRuntime.finalize()
 		},
 	})
+}
+
+func logResponsesToolPolicyRejection(traceID string, policy util.ToolChoicePolicy, parsed util.ToolCallParseResult, channel string) {
+	if !parsed.RejectedByPolicy || len(parsed.RejectedToolNames) == 0 {
+		return
+	}
+	config.Logger.Warn(
+		"[responses] rejected tool calls by policy",
+		"trace_id", strings.TrimSpace(traceID),
+		"channel", channel,
+		"tool_choice_mode", policy.Mode,
+		"rejected_tool_names", strings.Join(parsed.RejectedToolNames, ","),
+	)
 }

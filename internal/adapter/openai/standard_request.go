@@ -23,7 +23,8 @@ func normalizeOpenAIChatRequest(store ConfigReader, req map[string]any, traceID 
 	if responseModel == "" {
 		responseModel = resolvedModel
 	}
-	finalPrompt, toolNames := buildOpenAIFinalPrompt(messagesRaw, req["tools"], traceID)
+	toolPolicy := util.DefaultToolChoicePolicy()
+	finalPrompt, toolNames := buildOpenAIFinalPromptWithPolicy(messagesRaw, req["tools"], traceID, toolPolicy)
 	passThrough := collectOpenAIChatPassThrough(req)
 
 	return util.StandardRequest{
@@ -34,6 +35,7 @@ func normalizeOpenAIChatRequest(store ConfigReader, req map[string]any, traceID 
 		Messages:       messagesRaw,
 		FinalPrompt:    finalPrompt,
 		ToolNames:      toolNames,
+		ToolChoice:     toolPolicy,
 		Stream:         util.ToBool(req["stream"]),
 		Thinking:       thinkingEnabled,
 		Search:         searchEnabled,
@@ -67,7 +69,17 @@ func normalizeOpenAIResponsesRequest(store ConfigReader, req map[string]any, tra
 	if len(messagesRaw) == 0 {
 		return util.StandardRequest{}, fmt.Errorf("Request must include 'input' or 'messages'.")
 	}
-	finalPrompt, toolNames := buildOpenAIFinalPrompt(messagesRaw, req["tools"], traceID)
+	toolPolicy, err := parseToolChoicePolicy(req["tool_choice"], req["tools"])
+	if err != nil {
+		return util.StandardRequest{}, err
+	}
+	finalPrompt, toolNames := buildOpenAIFinalPromptWithPolicy(messagesRaw, req["tools"], traceID, toolPolicy)
+	if toolPolicy.IsNone() {
+		toolNames = nil
+		toolPolicy.Allowed = nil
+	} else {
+		toolPolicy.Allowed = namesToSet(toolNames)
+	}
 	passThrough := collectOpenAIChatPassThrough(req)
 
 	return util.StandardRequest{
@@ -78,6 +90,7 @@ func normalizeOpenAIResponsesRequest(store ConfigReader, req map[string]any, tra
 		Messages:       messagesRaw,
 		FinalPrompt:    finalPrompt,
 		ToolNames:      toolNames,
+		ToolChoice:     toolPolicy,
 		Stream:         util.ToBool(req["stream"]),
 		Thinking:       thinkingEnabled,
 		Search:         searchEnabled,
@@ -99,6 +112,215 @@ func collectOpenAIChatPassThrough(req map[string]any) map[string]any {
 		if v, ok := req[k]; ok {
 			out[k] = v
 		}
+	}
+	return out
+}
+
+func parseToolChoicePolicy(toolChoiceRaw any, toolsRaw any) (util.ToolChoicePolicy, error) {
+	policy := util.DefaultToolChoicePolicy()
+	declaredNames := extractDeclaredToolNames(toolsRaw)
+	declaredSet := namesToSet(declaredNames)
+	if len(declaredNames) > 0 {
+		policy.Allowed = declaredSet
+	}
+
+	if toolChoiceRaw == nil {
+		return policy, nil
+	}
+
+	switch v := toolChoiceRaw.(type) {
+	case string:
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "", "auto":
+			policy.Mode = util.ToolChoiceAuto
+		case "none":
+			policy.Mode = util.ToolChoiceNone
+			policy.Allowed = nil
+		case "required":
+			policy.Mode = util.ToolChoiceRequired
+		default:
+			return util.ToolChoicePolicy{}, fmt.Errorf("Unsupported tool_choice: %q", v)
+		}
+	case map[string]any:
+		allowedOverride, hasAllowedOverride, err := parseAllowedToolNames(v["allowed_tools"])
+		if err != nil {
+			return util.ToolChoicePolicy{}, err
+		}
+		if hasAllowedOverride {
+			filtered := make([]string, 0, len(allowedOverride))
+			for _, name := range allowedOverride {
+				if _, ok := declaredSet[name]; !ok {
+					return util.ToolChoicePolicy{}, fmt.Errorf("tool_choice.allowed_tools contains undeclared tool %q", name)
+				}
+				filtered = append(filtered, name)
+			}
+			policy.Allowed = namesToSet(filtered)
+		}
+
+		typ := strings.ToLower(strings.TrimSpace(asString(v["type"])))
+		switch typ {
+		case "", "auto":
+			if hasFunctionSelector(v) {
+				name, err := parseForcedToolName(v)
+				if err != nil {
+					return util.ToolChoicePolicy{}, err
+				}
+				policy.Mode = util.ToolChoiceForced
+				policy.ForcedName = name
+				policy.Allowed = namesToSet([]string{name})
+			} else {
+				policy.Mode = util.ToolChoiceAuto
+			}
+		case "none":
+			policy.Mode = util.ToolChoiceNone
+			policy.Allowed = nil
+		case "required":
+			policy.Mode = util.ToolChoiceRequired
+		case "function":
+			name, err := parseForcedToolName(v)
+			if err != nil {
+				return util.ToolChoicePolicy{}, err
+			}
+			policy.Mode = util.ToolChoiceForced
+			policy.ForcedName = name
+			policy.Allowed = namesToSet([]string{name})
+		default:
+			return util.ToolChoicePolicy{}, fmt.Errorf("Unsupported tool_choice.type: %q", typ)
+		}
+	default:
+		return util.ToolChoicePolicy{}, fmt.Errorf("tool_choice must be a string or object")
+	}
+
+	if policy.Mode == util.ToolChoiceRequired || policy.Mode == util.ToolChoiceForced {
+		if len(declaredNames) == 0 {
+			return util.ToolChoicePolicy{}, fmt.Errorf("tool_choice=%s requires non-empty tools.", policy.Mode)
+		}
+	}
+	if policy.Mode == util.ToolChoiceForced {
+		if _, ok := declaredSet[policy.ForcedName]; !ok {
+			return util.ToolChoicePolicy{}, fmt.Errorf("tool_choice forced function %q is not declared in tools", policy.ForcedName)
+		}
+	}
+	if len(policy.Allowed) == 0 && (policy.Mode == util.ToolChoiceRequired || policy.Mode == util.ToolChoiceForced) {
+		return util.ToolChoicePolicy{}, fmt.Errorf("tool_choice policy resolved to empty allowed tool set")
+	}
+	return policy, nil
+}
+
+func parseForcedToolName(v map[string]any) (string, error) {
+	if name := strings.TrimSpace(asString(v["name"])); name != "" {
+		return name, nil
+	}
+	if fn, ok := v["function"].(map[string]any); ok {
+		if name := strings.TrimSpace(asString(fn["name"])); name != "" {
+			return name, nil
+		}
+	}
+	return "", fmt.Errorf("tool_choice function requires name")
+}
+
+func parseAllowedToolNames(raw any) ([]string, bool, error) {
+	if raw == nil {
+		return nil, false, nil
+	}
+	collectName := func(v any) string {
+		if name := strings.TrimSpace(asString(v)); name != "" {
+			return name
+		}
+		if m, ok := v.(map[string]any); ok {
+			if name := strings.TrimSpace(asString(m["name"])); name != "" {
+				return name
+			}
+			if fn, ok := m["function"].(map[string]any); ok {
+				if name := strings.TrimSpace(asString(fn["name"])); name != "" {
+					return name
+				}
+			}
+		}
+		return ""
+	}
+
+	names := []string{}
+	switch x := raw.(type) {
+	case []any:
+		for _, item := range x {
+			name := collectName(item)
+			if name == "" {
+				return nil, true, fmt.Errorf("tool_choice.allowed_tools contains invalid item")
+			}
+			names = append(names, name)
+		}
+	case []string:
+		for _, item := range x {
+			name := strings.TrimSpace(item)
+			if name == "" {
+				return nil, true, fmt.Errorf("tool_choice.allowed_tools contains empty name")
+			}
+			names = append(names, name)
+		}
+	default:
+		return nil, true, fmt.Errorf("tool_choice.allowed_tools must be an array")
+	}
+
+	if len(names) == 0 {
+		return nil, true, fmt.Errorf("tool_choice.allowed_tools must not be empty")
+	}
+	return names, true, nil
+}
+
+func hasFunctionSelector(v map[string]any) bool {
+	if strings.TrimSpace(asString(v["name"])) != "" {
+		return true
+	}
+	if fn, ok := v["function"].(map[string]any); ok {
+		return strings.TrimSpace(asString(fn["name"])) != ""
+	}
+	return false
+}
+
+func extractDeclaredToolNames(toolsRaw any) []string {
+	tools, ok := toolsRaw.([]any)
+	if !ok || len(tools) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(tools))
+	seen := map[string]struct{}{}
+	for _, t := range tools {
+		tool, ok := t.(map[string]any)
+		if !ok {
+			continue
+		}
+		fn, _ := tool["function"].(map[string]any)
+		if len(fn) == 0 {
+			fn = tool
+		}
+		name := strings.TrimSpace(asString(fn["name"]))
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	return out
+}
+
+func namesToSet(names []string) map[string]struct{} {
+	if len(names) == 0 {
+		return nil
+	}
+	out := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		trimmed := strings.TrimSpace(name)
+		if trimmed == "" {
+			continue
+		}
+		out[trimmed] = struct{}{}
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }

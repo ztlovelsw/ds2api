@@ -286,8 +286,10 @@ OpenAI Responses 风格接口，兼容 `input` 或 `messages`。
 | `instructions` | string | ❌ | 自动前置为 system 消息 |
 | `stream` | boolean | ❌ | 默认 `false` |
 | `tools` | array | ❌ | 与 chat 同样的工具识别与转译策略 |
+| `tool_choice` | string/object | ❌ | 支持 `auto`/`none`/`required` 与强制函数（`{"type":"function","name":"..."}`） |
 
 **非流式响应**：返回标准 `response` 对象，`id` 形如 `resp_xxx`，并写入内存 TTL 存储。
+当 `tool_choice=required` 且未产出有效工具调用时，返回 HTTP `422`（`error.code=tool_choice_violation`）。
 
 **流式响应（SSE）**：最小事件序列如下。
 
@@ -295,17 +297,35 @@ OpenAI Responses 风格接口，兼容 `input` 或 `messages`。
 event: response.created
 data: {"type":"response.created","id":"resp_xxx","status":"in_progress",...}
 
+event: response.output_item.added
+data: {"type":"response.output_item.added","response_id":"resp_xxx","item":{"type":"message|function_call",...},...}
+
+event: response.content_part.added
+data: {"type":"response.content_part.added","response_id":"resp_xxx","part":{"type":"output_text",...},...}
+
 event: response.output_text.delta
 data: {"type":"response.output_text.delta","id":"resp_xxx","delta":"..."}
 
-event: response.output_tool_call.delta
-data: {"type":"response.output_tool_call.delta","id":"resp_xxx","tool_calls":[...]}
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","response_id":"resp_xxx","call_id":"call_xxx","delta":"..."}
+
+event: response.function_call_arguments.done
+data: {"type":"response.function_call_arguments.done","response_id":"resp_xxx","call_id":"call_xxx","name":"tool","arguments":"{...}"}
+
+event: response.content_part.done
+data: {"type":"response.content_part.done","response_id":"resp_xxx",...}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","response_id":"resp_xxx","item":{"type":"message|function_call",...},...}
 
 event: response.completed
 data: {"type":"response.completed","response":{...}}
 
 data: [DONE]
 ```
+
+流式场景下若 `tool_choice=required` 违规，会返回 `response.failed` 后结束（不再发送 `response.completed`）。
+未在 `tools` 声明中的工具名会被严格拒绝，不会作为有效 tool call 下发。
 
 ### `GET /v1/responses/{response_id}`
 

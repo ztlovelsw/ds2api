@@ -27,12 +27,7 @@ func BuildResponseObject(responseID, model, finalPrompt, finalThinking, finalTex
 				"text": finalThinking,
 			})
 		}
-		formatted := util.FormatOpenAIToolCalls(detected)
-		output = append(output, toResponsesFunctionCallItems(formatted)...)
-		output = append(output, map[string]any{
-			"type":       "tool_calls",
-			"tool_calls": formatted,
-		})
+		output = append(output, toResponsesFunctionCallItems(detected)...)
 	} else {
 		content := make([]any, 0, 2)
 		if finalThinking != "" {
@@ -70,32 +65,23 @@ func BuildResponseObject(responseID, model, finalPrompt, finalThinking, finalTex
 	}
 }
 
-func toResponsesFunctionCallItems(toolCalls []map[string]any) []any {
+func toResponsesFunctionCallItems(toolCalls []util.ParsedToolCall) []any {
 	if len(toolCalls) == 0 {
 		return nil
 	}
 	out := make([]any, 0, len(toolCalls))
 	for _, tc := range toolCalls {
-		callID, _ := tc["id"].(string)
-		if strings.TrimSpace(callID) == "" {
-			callID = "call_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+		if strings.TrimSpace(tc.Name) == "" {
+			continue
 		}
-		name := ""
-		args := "{}"
-		if fn, ok := tc["function"].(map[string]any); ok {
-			if n, _ := fn["name"].(string); strings.TrimSpace(n) != "" {
-				name = n
-			}
-			if a, _ := fn["arguments"].(string); strings.TrimSpace(a) != "" {
-				args = a
-			}
-		}
+		argsBytes, _ := json.Marshal(tc.Input)
+		args := normalizeJSONString(string(argsBytes))
 		out = append(out, map[string]any{
 			"id":        "fc_" + strings.ReplaceAll(uuid.NewString(), "-", ""),
 			"type":      "function_call",
-			"call_id":   callID,
-			"name":      name,
-			"arguments": normalizeJSONString(args),
+			"call_id":   "call_" + strings.ReplaceAll(uuid.NewString(), "-", ""),
+			"name":      tc.Name,
+			"arguments": args,
 			"status":    "completed",
 		})
 	}

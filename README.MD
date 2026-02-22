@@ -8,13 +8,13 @@
 
 语言 / Language: [中文](README.MD) | [English](README.en.md)
 
-将 DeepSeek Web 对话能力转换为 OpenAI 与 Claude 兼容 API。后端为 **Go 全量实现**，前端为 React WebUI 管理台（源码在 `webui/`，部署时自动构建到 `static/admin`）。
+将 DeepSeek Web 对话能力转换为 OpenAI、Claude 与 Gemini 兼容 API。后端为 **Go 全量实现**，前端为 React WebUI 管理台（源码在 `webui/`，部署时自动构建到 `static/admin`）。
 
 ## 架构概览
 
 ```mermaid
 flowchart LR
-    Client["🖥️ 客户端\n(OpenAI / Claude 兼容)"]
+    Client["🖥️ 客户端\n(OpenAI / Claude / Gemini 兼容)"]
 
     subgraph DS2API["DS2API 服务"]
         direction TB
@@ -24,6 +24,7 @@ flowchart LR
         subgraph Adapters["适配器层"]
             OA["OpenAI 适配器\n/v1/*"]
             CA["Claude 适配器\n/anthropic/*"]
+            GA["Gemini 适配器\n/v1beta/models/*"]
         end
 
         subgraph Support["支撑模块"]
@@ -38,11 +39,11 @@ flowchart LR
     DS["☁️ DeepSeek API"]
 
     Client -- "请求" --> CORS --> Auth
-    Auth --> OA & CA
-    OA & CA -- "调用" --> DS
+    Auth --> OA & CA & GA
+    OA & CA & GA -- "调用" --> DS
     Auth --> Admin
-    OA & CA -. "轮询选账号" .-> Pool
-    OA & CA -. "计算 PoW" .-> PoW
+    OA & CA & GA -. "轮询选账号" .-> Pool
+    OA & CA & GA -. "计算 PoW" .-> PoW
     DS -- "响应" --> Client
 ```
 
@@ -55,12 +56,13 @@ flowchart LR
 | 能力 | 说明 |
 | --- | --- |
 | OpenAI 兼容 | `GET /v1/models`、`GET /v1/models/{id}`、`POST /v1/chat/completions`、`POST /v1/responses`、`GET /v1/responses/{response_id}`、`POST /v1/embeddings` |
-| Claude 兼容 | `GET /anthropic/v1/models`、`POST /anthropic/v1/messages`、`POST /anthropic/v1/messages/count_tokens` |
+| Claude 兼容 | `GET /anthropic/v1/models`、`POST /anthropic/v1/messages`、`POST /anthropic/v1/messages/count_tokens`（及快捷路径 `/v1/messages`、`/messages`） |
+| Gemini 兼容 | `POST /v1beta/models/{model}:generateContent`、`POST /v1beta/models/{model}:streamGenerateContent`（及 `/v1/models/{model}:*` 路径） |
 | 多账号轮询 | 自动 token 刷新、邮箱/手机号双登录方式 |
 | 并发队列控制 | 每账号 in-flight 上限 + 等待队列，动态计算建议并发值 |
 | DeepSeek PoW | WASM 计算（`wazero`），无需外部 Node.js 依赖 |
 | Tool Calling | 防泄漏处理：非代码块高置信特征识别、`delta.tool_calls` 早发、结构化增量输出 |
-| Admin API | 配置管理、账号测试 / 批量测试、导入导出、Vercel 同步 |
+| Admin API | 配置管理、运行时设置热更新、账号测试 / 批量测试、导入导出、Vercel 同步 |
 | WebUI 管理台 | `/admin` 单页应用（中英文双语、深色模式） |
 | 运维探针 | `GET /healthz`（存活）、`GET /readyz`（就绪） |
 
@@ -72,6 +74,7 @@ flowchart LR
 | P0 | OpenAI SDK（JS/Python，chat + responses） | ✅ |
 | P0 | Vercel AI SDK（openai-compatible） | ✅ |
 | P0 | Anthropic SDK（messages） | ✅ |
+| P0 | Google Gemini SDK（generateContent） | ✅ |
 | P1 | LangChain / LlamaIndex / OpenWebUI（OpenAI 兼容接入） | ✅ |
 | P2 | MCP 独立桥接层 | 规划中 |
 
@@ -96,6 +99,10 @@ flowchart LR
 
 可通过配置中的 `claude_mapping` 或 `claude_model_mapping` 覆盖映射关系。
 另外，`/anthropic/v1/models` 现已包含 Claude 1.x/2.x/3.x/4.x 历史模型 ID 与常见别名，便于旧客户端直接兼容。
+
+### Gemini 接口
+
+Gemini 适配器将模型名通过 `model_aliases` 或内置规则映射到 DeepSeek 原生模型，支持 `generateContent` 和 `streamGenerateContent` 两种调用方式，并完整支持 Tool Calling（`functionDeclarations` → `functionCall` 输出）。
 
 ## 快速开始
 
@@ -249,6 +256,14 @@ cp opencode.json.example opencode.json
   "claude_model_mapping": {
     "fast": "deepseek-chat",
     "slow": "deepseek-reasoner"
+  },
+  "admin": {
+    "jwt_expire_hours": 24
+  },
+  "runtime": {
+    "account_max_inflight": 2,
+    "account_max_queue": 0,
+    "global_max_inflight": 0
   }
 }
 ```
@@ -262,6 +277,8 @@ cp opencode.json.example opencode.json
 - `responses.store_ttl_seconds`：`/v1/responses/{id}` 的内存缓存 TTL
 - `embeddings.provider`：embedding 提供方（当前内置 `deterministic/mock/builtin`）
 - `claude_model_mapping`：字典中 `fast`/`slow` 后缀映射到对应 DeepSeek 模型
+- `admin`：管理后台设置（JWT 过期时间、密码哈希等），可通过 Admin Settings API 热更新
+- `runtime`：运行时参数（并发限制、队列大小），可通过 Admin Settings API 热更新
 
 ### 环境变量
 
@@ -293,7 +310,7 @@ cp opencode.json.example opencode.json
 
 ## 鉴权模式
 
-调用业务接口（`/v1/*`、`/anthropic/*`）时支持两种模式：
+调用业务接口（`/v1/*`、`/anthropic/*`、Gemini 路由）时支持两种模式：
 
 | 模式 | 说明 |
 | --- | --- |
@@ -320,9 +337,10 @@ cp opencode.json.example opencode.json
 当请求中带 `tools` 时，DS2API 会做防泄漏处理：
 
 1. 只在**非代码块上下文**启用 toolcall 特征识别（代码块示例不会触发）
-2. 一旦命中高置信特征（`tool_calls` + `name` + `arguments/input` 起始）就立即输出 `delta.tool_calls`
-3. 已确认的 toolcall JSON 片段不会泄漏到 `delta.content`
-4. 前文/后文自然语言保持顺序透传，支持混合文本与增量参数输出
+2. `responses` 流式严格使用官方 item 生命周期事件（`response.output_item.*`、`response.content_part.*`、`response.function_call_arguments.*`）
+3. 未在 `tools` 声明中的工具名会被严格拒绝，不会下发为有效 tool call
+4. `responses` 支持并执行 `tool_choice`（`auto`/`none`/`required`/强制函数）；`required` 违规时非流式返回 `422`，流式返回 `response.failed`
+5. 仅在通过策略校验后才会发出有效工具调用事件，避免错误工具名进入客户端执行链
 
 ## 本地开发抓包工具
 
@@ -362,13 +380,20 @@ ds2api/
 │   ├── account/             # 账号池与并发队列
 │   ├── adapter/
 │   │   ├── openai/          # OpenAI 兼容适配器（含 Tool Call 解析、Vercel 流式 prepare/release）
-│   │   └── claude/          # Claude 兼容适配器
-│   ├── admin/               # Admin API handlers
+│   │   ├── claude/          # Claude 兼容适配器
+│   │   └── gemini/          # Gemini 兼容适配器（generateContent / streamGenerateContent）
+│   ├── admin/               # Admin API handlers（含 Settings 热更新）
 │   ├── auth/                # 鉴权与 JWT
+│   ├── claudeconv/          # Claude 消息格式转换
+│   ├── compat/              # 兼容性辅助
 │   ├── config/              # 配置加载与热更新
 │   ├── deepseek/            # DeepSeek API 客户端、PoW WASM
+│   ├── devcapture/          # 开发抓包模块
+│   ├── format/              # 输出格式化
+│   ├── prompt/              # Prompt 构建
 │   ├── server/              # HTTP 路由与中间件（chi router）
 │   ├── sse/                 # SSE 解析工具
+│   ├── stream/              # 统一流式消费引擎
 │   ├── util/                # 通用工具函数
 │   └── webui/               # WebUI 静态文件托管与自动构建
 ├── webui/                   # React WebUI 源码（Vite + Tailwind）

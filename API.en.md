@@ -286,8 +286,10 @@ OpenAI Responses-style endpoint, accepting either `input` or `messages`.
 | `instructions` | string | ❌ | Prepended as a system message |
 | `stream` | boolean | ❌ | Default `false` |
 | `tools` | array | ❌ | Same tool detection/translation policy as chat |
+| `tool_choice` | string/object | ❌ | Supports `auto`/`none`/`required` and forced function selection (`{"type":"function","name":"..."}`) |
 
 **Non-stream**: Returns a standard `response` object with an ID like `resp_xxx`, and stores it in in-memory TTL cache.
+If `tool_choice=required` and no valid tool call is produced, DS2API returns HTTP `422` (`error.code=tool_choice_violation`).
 
 **Stream (SSE)**: minimal event sequence:
 
@@ -295,17 +297,35 @@ OpenAI Responses-style endpoint, accepting either `input` or `messages`.
 event: response.created
 data: {"type":"response.created","id":"resp_xxx","status":"in_progress",...}
 
+event: response.output_item.added
+data: {"type":"response.output_item.added","response_id":"resp_xxx","item":{"type":"message|function_call",...},...}
+
+event: response.content_part.added
+data: {"type":"response.content_part.added","response_id":"resp_xxx","part":{"type":"output_text",...},...}
+
 event: response.output_text.delta
 data: {"type":"response.output_text.delta","id":"resp_xxx","delta":"..."}
 
-event: response.output_tool_call.delta
-data: {"type":"response.output_tool_call.delta","id":"resp_xxx","tool_calls":[...]}
+event: response.function_call_arguments.delta
+data: {"type":"response.function_call_arguments.delta","response_id":"resp_xxx","call_id":"call_xxx","delta":"..."}
+
+event: response.function_call_arguments.done
+data: {"type":"response.function_call_arguments.done","response_id":"resp_xxx","call_id":"call_xxx","name":"tool","arguments":"{...}"}
+
+event: response.content_part.done
+data: {"type":"response.content_part.done","response_id":"resp_xxx",...}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","response_id":"resp_xxx","item":{"type":"message|function_call",...},...}
 
 event: response.completed
 data: {"type":"response.completed","response":{...}}
 
 data: [DONE]
 ```
+
+If `tool_choice=required` is violated in stream mode, DS2API emits `response.failed` then `[DONE]` (no `response.completed`).
+Unknown tool names (outside declared `tools`) are rejected and will not be emitted as valid tool calls.
 
 ### `GET /v1/responses/{response_id}`
 
