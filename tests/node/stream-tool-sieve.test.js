@@ -52,11 +52,19 @@ test('parseToolCalls keeps non-object argument strings as _raw (Go parity)', () 
   ]);
 });
 
-test('parseToolCalls still intercepts unknown schema names to avoid leaks', () => {
+test('parseToolCalls drops unknown schema names when toolNames is provided', () => {
   const payload = JSON.stringify({
     tool_calls: [{ name: 'not_in_schema', input: { q: 'go' } }],
   });
   const calls = parseToolCalls(payload, ['search']);
+  assert.equal(calls.length, 0);
+});
+
+test('parseToolCalls keeps unknown names when toolNames is empty', () => {
+  const payload = JSON.stringify({
+    tool_calls: [{ name: 'not_in_schema', input: { q: 'go' } }],
+  });
+  const calls = parseToolCalls(payload, []);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].name, 'not_in_schema');
 });

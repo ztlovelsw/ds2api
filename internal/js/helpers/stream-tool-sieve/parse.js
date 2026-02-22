@@ -263,14 +263,6 @@ function filterToolCalls(parsed, toolNames) {
     }
     out.push({ name: tc.name, input: tc.input || {} });
   }
-  if (out.length === 0 && parsed.length > 0) {
-    for (const tc of parsed) {
-      if (!tc || !tc.name) {
-        continue;
-      }
-      out.push({ name: tc.name, input: tc.input || {} });
-    }
-  }
   return out;
 }
 
