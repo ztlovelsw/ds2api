@@ -39,6 +39,7 @@ type responsesStreamRuntime struct {
 	streamToolCallIDs map[int]string
 	functionItemIDs   map[int]string
 	functionOutputIDs map[int]int
+	functionArgs      map[int]string
 	functionDone      map[int]bool
 	functionAdded     map[int]bool
 	functionNames     map[int]string
@@ -84,6 +85,7 @@ func newResponsesStreamRuntime(
 		streamToolCallIDs:   map[int]string{},
 		functionItemIDs:     map[int]string{},
 		functionOutputIDs:   map[int]int{},
+		functionArgs:        map[int]string{},
 		functionDone:        map[int]bool{},
 		functionAdded:       map[int]bool{},
 		functionNames:       map[int]string{},
@@ -120,7 +122,7 @@ func (s *responsesStreamRuntime) finalize() {
 
 	s.closeMessageItem()
 
-	if s.toolChoice.IsRequired() && !s.hasFunctionCallDone() {
+	if s.toolChoice.IsRequired() && len(detected) == 0 {
 		s.failed = true
 		message := "tool_choice requires at least one valid tool call."
 		failedResp := map[string]any{
@@ -145,6 +147,7 @@ func (s *responsesStreamRuntime) finalize() {
 		s.sendDone()
 		return
 	}
+	s.closeIncompleteFunctionItems()
 
 	obj := s.buildCompletedResponseObject(finalThinking, finalText, detected)
 	if s.persistResponse != nil {

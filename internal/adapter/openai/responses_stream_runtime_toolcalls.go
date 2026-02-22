@@ -188,6 +188,7 @@ func (s *responsesStreamRuntime) emitFunctionCallDeltaEvents(deltas []toolCallDe
 		if strings.TrimSpace(d.Arguments) == "" {
 			continue
 		}
+		s.functionArgs[d.Index] += d.Arguments
 		outputIndex := s.ensureFunctionOutputIndex(d.Index)
 		itemID := s.ensureFunctionItemID(d.Index)
 		callID := s.ensureToolCallID(d.Index)
@@ -212,6 +213,7 @@ func (s *responsesStreamRuntime) emitFunctionCallDoneEvents(calls []util.ParsedT
 		callID := s.ensureToolCallID(idx)
 		argsBytes, _ := json.Marshal(tc.Input)
 		args := string(argsBytes)
+		s.functionArgs[idx] = args
 		s.sendEvent(
 			"response.function_call_arguments.done",
 			openaifmt.BuildResponsesFunctionCallArgumentsDonePayload(s.responseID, itemID, outputIndex, callID, tc.Name, args),
@@ -221,6 +223,54 @@ func (s *responsesStreamRuntime) emitFunctionCallDoneEvents(calls []util.ParsedT
 			"type":      "function_call",
 			"call_id":   callID,
 			"name":      tc.Name,
+			"arguments": args,
+			"status":    "completed",
+		}
+		s.sendEvent(
+			"response.output_item.done",
+			openaifmt.BuildResponsesOutputItemDonePayload(s.responseID, itemID, outputIndex, item),
+		)
+		s.functionDone[idx] = true
+		s.toolCallsDoneEmitted = true
+	}
+}
+
+func (s *responsesStreamRuntime) closeIncompleteFunctionItems() {
+	if len(s.functionAdded) == 0 {
+		return
+	}
+	indices := make([]int, 0, len(s.functionAdded))
+	for idx, added := range s.functionAdded {
+		if !added || s.functionDone[idx] {
+			continue
+		}
+		indices = append(indices, idx)
+	}
+	if len(indices) == 0 {
+		return
+	}
+	sort.Ints(indices)
+	for _, idx := range indices {
+		name := strings.TrimSpace(s.functionNames[idx])
+		if name == "" {
+			continue
+		}
+		args := strings.TrimSpace(s.functionArgs[idx])
+		if args == "" {
+			args = "{}"
+		}
+		outputIndex := s.ensureFunctionOutputIndex(idx)
+		itemID := s.ensureFunctionItemID(idx)
+		callID := s.ensureToolCallID(idx)
+		s.sendEvent(
+			"response.function_call_arguments.done",
+			openaifmt.BuildResponsesFunctionCallArgumentsDonePayload(s.responseID, itemID, outputIndex, callID, name, args),
+		)
+		item := map[string]any{
+			"id":        itemID,
+			"type":      "function_call",
+			"call_id":   callID,
+			"name":      name,
 			"arguments": args,
 			"status":    "completed",
 		}

@@ -360,6 +360,42 @@ func TestHandleResponsesStreamToolChoiceNoneRejectsFunctionCall(t *testing.T) {
 	}
 }
 
+func TestHandleResponsesStreamMalformedToolJSONClosesInProgressFunctionItem(t *testing.T) {
+	h := &Handler{}
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	rec := httptest.NewRecorder()
+
+	sseLine := func(v string) string {
+		b, _ := json.Marshal(map[string]any{
+			"p": "response/content",
+			"v": v,
+		})
+		return "data: " + string(b) + "\n"
+	}
+
+	// invalid JSON (NaN) can still trigger incremental tool deltas before final parse rejects it
+	streamBody := sseLine(`{"tool_calls":[{"name":"read_file","input":{"path":"README.MD"},"x":NaN}]}`) + "data: [DONE]\n"
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(streamBody)),
+	}
+
+	h.handleResponsesStream(rec, req, resp, "owner-a", "resp_test", "deepseek-chat", "prompt", false, false, []string{"read_file"}, util.DefaultToolChoicePolicy(), "")
+	body := rec.Body.String()
+	if !strings.Contains(body, "event: response.function_call_arguments.delta") {
+		t.Fatalf("expected response.function_call_arguments.delta event for malformed payload, body=%s", body)
+	}
+	if !strings.Contains(body, "event: response.function_call_arguments.done") {
+		t.Fatalf("expected runtime to close in-progress function_call with done event, body=%s", body)
+	}
+	if !strings.Contains(body, "event: response.output_item.done") {
+		t.Fatalf("expected runtime to close function output item, body=%s", body)
+	}
+	if !strings.Contains(body, "event: response.completed") {
+		t.Fatalf("expected response.completed event, body=%s", body)
+	}
+}
+
 func TestHandleResponsesStreamRequiredToolChoiceFailure(t *testing.T) {
 	h := &Handler{}
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
@@ -391,6 +427,40 @@ func TestHandleResponsesStreamRequiredToolChoiceFailure(t *testing.T) {
 	}
 	if strings.Contains(body, "event: response.completed") {
 		t.Fatalf("did not expect response.completed after failure, body=%s", body)
+	}
+}
+
+func TestHandleResponsesStreamRequiredMalformedToolPayloadFails(t *testing.T) {
+	h := &Handler{}
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	rec := httptest.NewRecorder()
+
+	sseLine := func(v string) string {
+		b, _ := json.Marshal(map[string]any{
+			"p": "response/content",
+			"v": v,
+		})
+		return "data: " + string(b) + "\n"
+	}
+
+	streamBody := sseLine(`{"tool_calls":[{"name":"read_file","input":{"path":"README.MD"},"x":NaN}]}`) + "data: [DONE]\n"
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(streamBody)),
+	}
+	policy := util.ToolChoicePolicy{
+		Mode:    util.ToolChoiceRequired,
+		Allowed: map[string]struct{}{"read_file": {}},
+	}
+
+	h.handleResponsesStream(rec, req, resp, "owner-a", "resp_test", "deepseek-chat", "prompt", false, false, []string{"read_file"}, policy, "")
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "event: response.failed") {
+		t.Fatalf("expected response.failed event, body=%s", body)
+	}
+	if strings.Contains(body, "event: response.completed") {
+		t.Fatalf("did not expect response.completed, body=%s", body)
 	}
 }
 
