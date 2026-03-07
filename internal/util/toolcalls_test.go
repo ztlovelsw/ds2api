@@ -232,3 +232,31 @@ func TestParseToolCallsSupportsInvokeFunctionCallStyle(t *testing.T) {
 		t.Fatalf("expected command argument, got %#v", calls[0].Input)
 	}
 }
+
+func TestParseToolCallsSupportsNestedToolTagStyle(t *testing.T) {
+	text := `<tool_call><tool name="Bash"><command>pwd</command><description>show cwd</description></tool></tool_call>`
+	calls := ParseToolCalls(text, []string{"bash"})
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %#v", calls)
+	}
+	if calls[0].Name != "bash" {
+		t.Fatalf("expected canonical tool name bash, got %q", calls[0].Name)
+	}
+	if calls[0].Input["command"] != "pwd" {
+		t.Fatalf("expected command argument, got %#v", calls[0].Input)
+	}
+}
+
+func TestParseToolCallsSupportsAntmlFunctionAttributeWithParametersTag(t *testing.T) {
+	text := `<antml:function_calls><antml:function_call id="x" function="Bash"><antml:parameters>{"command":"pwd"}</antml:parameters></antml:function_call></antml:function_calls>`
+	calls := ParseToolCalls(text, []string{"bash"})
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 call, got %#v", calls)
+	}
+	if calls[0].Name != "bash" {
+		t.Fatalf("expected canonical tool name bash, got %q", calls[0].Name)
+	}
+	if calls[0].Input["command"] != "pwd" {
+		t.Fatalf("expected command argument, got %#v", calls[0].Input)
+	}
+}

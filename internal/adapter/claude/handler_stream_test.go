@@ -315,3 +315,45 @@ func asString(v any) string {
 	s, _ := v.(string)
 	return s
 }
+
+func TestHandleClaudeStreamRealtimeToolSafetyAcrossStructuredFormats(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload string
+	}{
+		{name: "xml_tool_call", payload: `<tool_call><tool_name>Bash</tool_name><parameters><command>pwd</command></parameters></tool_call>`},
+		{name: "xml_json_tool_call", payload: `<tool_call>{"tool":"Bash","params":{"command":"pwd"}}</tool_call>`},
+		{name: "nested_tool_tag_style", payload: `<tool_call><tool name="Bash"><command>pwd</command></tool></tool_call>`},
+		{name: "function_tag_style", payload: `<function_call>Bash</function_call><function parameter name="command">pwd</function parameter>`},
+		{name: "antml_argument_style", payload: `<antml:function_calls><antml:function_call id="1" name="Bash"><antml:argument name="command">pwd</antml:argument></antml:function_call></antml:function_calls>`},
+		{name: "antml_function_attr_parameters", payload: `<antml:function_calls><antml:function_call id="1" function="Bash"><antml:parameters>{"command":"pwd"}</antml:parameters></antml:function_call></antml:function_calls>`},
+		{name: "invoke_parameter_style", payload: `<function_calls><invoke name="Bash"><parameter name="command">pwd</parameter></invoke></function_calls>`},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := &Handler{}
+			resp := makeClaudeSSEHTTPResponse(
+				`data: {"p":"response/content","v":"`+strings.ReplaceAll(tc.payload, `"`, `\"`)+`"}`,
+				`data: [DONE]`,
+			)
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/anthropic/v1/messages", nil)
+
+			h.handleClaudeStreamRealtime(rec, req, resp, "claude-sonnet-4-5", []any{map[string]any{"role": "user", "content": "use tool"}}, false, false, []string{"Bash"})
+
+			frames := parseClaudeFrames(t, rec.Body.String())
+			foundToolUse := false
+			for _, f := range findClaudeFrames(frames, "content_block_start") {
+				contentBlock, _ := f.Payload["content_block"].(map[string]any)
+				if contentBlock["type"] == "tool_use" {
+					foundToolUse = true
+					break
+				}
+			}
+			if !foundToolUse {
+				t.Fatalf("expected tool_use block for format %s, body=%s", tc.name, rec.Body.String())
+			}
+		})
+	}
+}
