@@ -256,11 +256,40 @@ function consumeToolCapture(state, toolNames) {
     };
   }
 
+  const trimmedFence = trimWrappingJSONFence(prefixPart, suffixPart);
   return {
     ready: true,
-    prefix: prefixPart,
+    prefix: trimmedFence.prefix,
     calls: parsed.calls,
-    suffix: suffixPart,
+    suffix: trimmedFence.suffix,
+  };
+}
+
+function trimWrappingJSONFence(prefix, suffix) {
+  const rightTrimmedPrefix = (prefix || '').replace(/[ \t\r\n]+$/g, '');
+  const fenceIdx = rightTrimmedPrefix.lastIndexOf('```');
+  if (fenceIdx < 0) {
+    return { prefix, suffix };
+  }
+  // Only strip when this behaves like an opening fence.
+  // If it's a legitimate closing fence before standalone tool JSON, keep it.
+  const fenceCount = (rightTrimmedPrefix.slice(0, fenceIdx + 3).match(/```/g) || []).length;
+  if (fenceCount % 2 === 0) {
+    return { prefix, suffix };
+  }
+  const header = rightTrimmedPrefix.slice(fenceIdx + 3).trim().toLowerCase();
+  if (header && header !== 'json') {
+    return { prefix, suffix };
+  }
+
+  const leftTrimmedSuffix = (suffix || '').replace(/^[ \t\r\n]+/g, '');
+  if (!leftTrimmedSuffix.startsWith('```')) {
+    return { prefix, suffix };
+  }
+  const consumed = (suffix || '').length - leftTrimmedSuffix.length;
+  return {
+    prefix: rightTrimmedPrefix.slice(0, fenceIdx),
+    suffix: (suffix || '').slice(consumed + 3),
   };
 }
 

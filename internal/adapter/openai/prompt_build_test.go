@@ -80,4 +80,7 @@ func TestBuildOpenAIFinalPrompt_VercelPreparePathKeepsFinalAnswerInstruction(t *
 	if !strings.Contains(finalPrompt, "[TOOL_RESULT_HISTORY]") {
 		t.Fatalf("vercel prepare finalPrompt missing history marker instruction: %q", finalPrompt)
 	}
+	if !strings.Contains(finalPrompt, "Never output [TOOL_CALL_HISTORY] or [TOOL_RESULT_HISTORY] markers in your answer") {
+		t.Fatalf("vercel prepare finalPrompt missing marker-output guard instruction: %q", finalPrompt)
+	}
 }

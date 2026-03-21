@@ -182,6 +182,9 @@ func findToolSegmentStart(s string) int {
 	if start < 0 {
 		start = bestKeyIdx
 	}
+	if fenceStart, ok := openFenceStartBefore(s, start); ok {
+		return fenceStart
+	}
 	return start
 }
 
@@ -191,7 +194,7 @@ func consumeToolCapture(state *toolStreamSieveState, toolNames []string) (prefix
 		return "", nil, "", false
 	}
 	lower := strings.ToLower(captured)
-	
+
 	keyIdx := -1
 	keywords := []string{"tool_calls", "function.name:", "[tool_call_history]"}
 	for _, kw := range keywords {
@@ -200,7 +203,7 @@ func consumeToolCapture(state *toolStreamSieveState, toolNames []string) (prefix
 			keyIdx = idx
 		}
 	}
-	
+
 	if keyIdx < 0 {
 		return "", nil, "", false
 	}
@@ -226,5 +229,45 @@ func consumeToolCapture(state *toolStreamSieveState, toolNames []string) (prefix
 		// For now, keep the original logic but rely on loose JSON repair.
 		return captured, nil, "", true
 	}
+	prefixPart, suffixPart = trimWrappingJSONFence(prefixPart, suffixPart)
 	return prefixPart, parsed.Calls, suffixPart, true
+}
+
+func trimWrappingJSONFence(prefix, suffix string) (string, string) {
+	trimmedPrefix := strings.TrimRight(prefix, " \t\r\n")
+	fenceIdx := strings.LastIndex(trimmedPrefix, "```")
+	if fenceIdx < 0 {
+		return prefix, suffix
+	}
+	// Only strip when the trailing fence in prefix behaves like an opening fence.
+	// A legitimate closing fence before a standalone tool JSON must be preserved.
+	if strings.Count(trimmedPrefix[:fenceIdx+3], "```")%2 == 0 {
+		return prefix, suffix
+	}
+	fenceHeader := strings.TrimSpace(trimmedPrefix[fenceIdx+3:])
+	if fenceHeader != "" && !strings.EqualFold(fenceHeader, "json") {
+		return prefix, suffix
+	}
+
+	trimmedSuffix := strings.TrimLeft(suffix, " \t\r\n")
+	if !strings.HasPrefix(trimmedSuffix, "```") {
+		return prefix, suffix
+	}
+	consumedLeading := len(suffix) - len(trimmedSuffix)
+	return trimmedPrefix[:fenceIdx], suffix[consumedLeading+3:]
+}
+
+func openFenceStartBefore(s string, pos int) (int, bool) {
+	if pos <= 0 || pos > len(s) {
+		return -1, false
+	}
+	segment := s[:pos]
+	lastFence := strings.LastIndex(segment, "```")
+	if lastFence < 0 {
+		return -1, false
+	}
+	if strings.Count(segment, "```")%2 == 1 {
+		return lastFence, true
+	}
+	return -1, false
 }

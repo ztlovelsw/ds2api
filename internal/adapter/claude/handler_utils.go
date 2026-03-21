@@ -54,6 +54,7 @@ func buildClaudeToolPrompt(tools []any) string {
 		"When you need a tool, respond with Claude-native tool use (tool_use) using the provided tool schema. Do not print tool-call JSON in text.",
 		"History markers in conversation: [TOOL_CALL_HISTORY]...[/TOOL_CALL_HISTORY] are your previous tool calls; [TOOL_RESULT_HISTORY]...[/TOOL_RESULT_HISTORY] are runtime tool outputs, not user input.",
 		"After a valid [TOOL_RESULT_HISTORY], continue with final answer instead of repeating the same call unless required fields are still missing.",
+		"Never output [TOOL_CALL_HISTORY] or [TOOL_RESULT_HISTORY] markers yourself; they are system-side context only.",
 	)
 	return strings.Join(parts, "\n\n")
 }

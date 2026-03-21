@@ -286,6 +286,18 @@ test('sieve emits tool_calls and keeps trailing prose when payload and prose sha
   assert.equal(leakedText.toLowerCase().includes('tool_calls'), false);
 });
 
+test('sieve preserves closed fence before standalone tool payload', () => {
+  const events = runSieve(
+    ['先给一个代码示例：\n```text\nhello\n```\n{"tool_calls":[{"name":"read_file","input":{"path":"README.MD"}}]}'],
+    ['read_file'],
+  );
+  const hasTool = events.some((evt) => evt.type === 'tool_calls' && evt.calls?.length > 0);
+  const leakedText = collectText(events);
+  assert.equal(hasTool, true);
+  assert.equal(leakedText.includes('```'), true);
+  assert.equal(leakedText.toLowerCase().includes('tool_calls'), false);
+});
+
 test('formatOpenAIStreamToolCalls reuses ids with the same idStore', () => {
   const idStore = new Map();
   const calls = [{ name: 'read_file', input: { path: 'README.MD' } }];

@@ -651,6 +651,48 @@ func TestHandleStreamFencedToolCallSnippetPromotesToolCall(t *testing.T) {
 	if strings.Contains(strings.ToLower(got), "tool_calls") {
 		t.Fatalf("expected raw fenced tool_calls snippet stripped from content, got=%q", got)
 	}
+	if strings.Contains(strings.ToLower(got), "```json") || strings.Contains(got, "\n```\n") {
+		t.Fatalf("expected consumed fenced tool payload to not leave empty code fence, got=%q", got)
+	}
+	if streamFinishReason(frames) != "tool_calls" {
+		t.Fatalf("expected finish_reason=tool_calls, body=%s", rec.Body.String())
+	}
+}
+
+func TestHandleStreamStandaloneToolCallAfterClosedFenceKeepsFence(t *testing.T) {
+	h := &Handler{}
+	resp := makeSSEHTTPResponse(
+		fmt.Sprintf(`data: {"p":"response/content","v":%q}`, "先给一个代码示例：\n```text\nhello\n```\n"),
+		fmt.Sprintf(`data: {"p":"response/content","v":%q}`, "{\"tool_calls\":[{\"name\":\"search\",\"input\":{\"q\":\"go\"}}]}"),
+		`data: [DONE]`,
+	)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	h.handleStream(rec, req, resp, "cid7g", "deepseek-chat", "prompt", false, false, []string{"search"})
+
+	frames, done := parseSSEDataFrames(t, rec.Body.String())
+	if !done {
+		t.Fatalf("expected [DONE], body=%s", rec.Body.String())
+	}
+	if !streamHasToolCallsDelta(frames) {
+		t.Fatalf("expected tool_calls delta for standalone payload, body=%s", rec.Body.String())
+	}
+	content := strings.Builder{}
+	for _, frame := range frames {
+		choices, _ := frame["choices"].([]any)
+		for _, item := range choices {
+			choice, _ := item.(map[string]any)
+			delta, _ := choice["delta"].(map[string]any)
+			if c, ok := delta["content"].(string); ok {
+				content.WriteString(c)
+			}
+		}
+	}
+	got := content.String()
+	if !strings.Contains(got, "```") {
+		t.Fatalf("expected closed fence before standalone tool json to be preserved, got=%q", got)
+	}
 	if streamFinishReason(frames) != "tool_calls" {
 		t.Fatalf("expected finish_reason=tool_calls, body=%s", rec.Body.String())
 	}

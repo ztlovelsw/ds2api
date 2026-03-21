@@ -128,6 +128,9 @@ func TestBuildClaudeToolPromptSingleTool(t *testing.T) {
 	if !containsStr(prompt, "tool_use") {
 		t.Fatalf("expected tool_use instruction in prompt")
 	}
+	if !containsStr(prompt, "Never output [TOOL_CALL_HISTORY] or [TOOL_RESULT_HISTORY] markers yourself") {
+		t.Fatalf("expected marker guard instruction in prompt")
+	}
 	if containsStr(prompt, "tool_calls") {
 		t.Fatalf("expected prompt to avoid tool_calls JSON instruction")
 	}
