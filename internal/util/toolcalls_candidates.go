@@ -30,6 +30,12 @@ func buildToolCallCandidates(text string) []string {
 	if first >= 0 && last > first {
 		candidates = append(candidates, strings.TrimSpace(trimmed[first:last+1]))
 	}
+	// best-effort array slice: from first '[' to last ']'
+	firstArr := strings.Index(trimmed, "[")
+	lastArr := strings.LastIndex(trimmed, "]")
+	if firstArr >= 0 && lastArr > firstArr {
+		candidates = append(candidates, strings.TrimSpace(trimmed[firstArr:lastArr+1]))
+	}
 
 	// legacy regex extraction fallback
 	if m := toolCallPattern.FindStringSubmatch(trimmed); len(m) >= 2 {
@@ -58,7 +64,7 @@ func extractToolCallObjects(text string) []string {
 	lower := strings.ToLower(text)
 	out := []string{}
 	offset := 0
-	keywords := []string{"tool_calls", "function.name:", "[tool_call_history]"}
+	keywords := []string{"tool_calls", "\"function\"", "function.name:", "[tool_call_history]"}
 	for {
 		bestIdx := -1
 		matchedKeyword := ""

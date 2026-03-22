@@ -58,7 +58,7 @@ test('boolDefaultTrue keeps false only when explicitly false', () => {
   assert.equal(boolDefaultTrue(undefined), true);
 });
 
-test('filterIncrementalToolCallDeltasByAllowed blocks unknown name and follow-up args', () => {
+test('filterIncrementalToolCallDeltasByAllowed keeps unknown name and follow-up args', () => {
   const seen = new Map();
   const filtered = filterIncrementalToolCallDeltasByAllowed(
     [
@@ -68,8 +68,11 @@ test('filterIncrementalToolCallDeltasByAllowed blocks unknown name and follow-up
     ['read_file'],
     seen,
   );
-  assert.deepEqual(filtered, []);
-  assert.equal(seen.get(0), '__blocked__');
+  assert.deepEqual(filtered, [
+    { index: 0, name: 'not_in_schema' },
+    { index: 0, arguments: '{"x":1}' },
+  ]);
+  assert.equal(seen.get(0), 'not_in_schema');
 });
 
 test('filterIncrementalToolCallDeltasByAllowed keeps allowed name and args', () => {

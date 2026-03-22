@@ -56,6 +56,11 @@ function buildToolCallCandidates(text) {
   if (first >= 0 && last > first) {
     candidates.push(toStringSafe(trimmed.slice(first, last + 1)));
   }
+  const firstArr = trimmed.indexOf('[');
+  const lastArr = trimmed.lastIndexOf(']');
+  if (firstArr >= 0 && lastArr > firstArr) {
+    candidates.push(toStringSafe(trimmed.slice(firstArr, lastArr + 1)));
+  }
 
   const m = trimmed.match(TOOL_CALL_PATTERN);
   if (m && m[1]) {
@@ -76,7 +81,17 @@ function extractToolCallObjects(text) {
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    let idx = lower.indexOf('tool_calls', offset);
+    const idxToolCalls = lower.indexOf('tool_calls', offset);
+    const idxFunction = lower.indexOf('"function"', offset);
+    let idx = -1;
+    let matched = '';
+    if (idxToolCalls >= 0 && (idxFunction < 0 || idxToolCalls <= idxFunction)) {
+      idx = idxToolCalls;
+      matched = 'tool_calls';
+    } else if (idxFunction >= 0) {
+      idx = idxFunction;
+      matched = '"function"';
+    }
     if (idx < 0) {
       break;
     }
@@ -92,7 +107,7 @@ function extractToolCallObjects(text) {
       start = raw.slice(0, start).lastIndexOf('{');
     }
     if (idx >= 0) {
-      offset = idx + 'tool_calls'.length;
+      offset = idx + matched.length;
     }
   }
 
