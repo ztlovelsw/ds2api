@@ -226,6 +226,17 @@ node --test tests/node/stream-tool-sieve.test.js
 go run ./cmd/ds2api-tests --no-preflight
 ```
 
+### 运行原始流仿真（独立工具）
+
+```bash
+./tests/scripts/run-raw-stream-sim.sh
+```
+
+说明：
+- 该工具会重放 `tests/raw_stream_samples` 下全部样本，按上游 SSE 顺序做 1:1 仿真解析。
+- 默认校验不出现 `FINISHED` 文本泄露，并要求存在结束信号。
+- 结果会写入 `artifacts/raw-stream-sim/*.json`，可供其他测试脚本或排障流程复用。
+
 ### 指定输出目录和超时
 
 ```bash

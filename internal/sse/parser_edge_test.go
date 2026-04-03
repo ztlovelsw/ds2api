@@ -90,6 +90,15 @@ func TestShouldSkipPathFragmentStatus(t *testing.T) {
 	if !shouldSkipPath("response/fragments/-3/status") {
 		t.Fatal("expected skip for fragment -3 status")
 	}
+	if !shouldSkipPath("response/fragments/-16/status") {
+		t.Fatal("expected skip for fragment -16 status")
+	}
+	if !shouldSkipPath("response/fragments/7/status") {
+		t.Fatal("expected skip for fragment 7 status")
+	}
+	if shouldSkipPath("response/status") {
+		t.Fatal("expected response/status to be handled by finish logic, not skipped")
+	}
 }
 
 func TestShouldSkipPathRegularContent(t *testing.T) {

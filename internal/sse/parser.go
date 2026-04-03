@@ -31,6 +31,9 @@ func ParseDeepSeekSSELine(raw []byte) (map[string]any, bool, bool) {
 }
 
 func shouldSkipPath(path string) bool {
+	if isFragmentStatusPath(path) {
+		return true
+	}
 	if _, ok := deepseek.SkipExactPathSet[path]; ok {
 		return true
 	}
@@ -40,6 +43,31 @@ func shouldSkipPath(path string) bool {
 		}
 	}
 	return false
+}
+
+func isFragmentStatusPath(path string) bool {
+	if path == "" || path == "response/status" {
+		return false
+	}
+	if !strings.HasPrefix(path, "response/fragments/") || !strings.HasSuffix(path, "/status") {
+		return false
+	}
+	mid := strings.TrimSuffix(strings.TrimPrefix(path, "response/fragments/"), "/status")
+	if mid == "" {
+		return false
+	}
+	if strings.HasPrefix(mid, "-") {
+		mid = mid[1:]
+	}
+	if mid == "" {
+		return false
+	}
+	for _, r := range mid {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func ParseSSEChunkForContent(chunk map[string]any, thinkingEnabled bool, currentFragmentType string) ([]ContentPart, bool, string) {

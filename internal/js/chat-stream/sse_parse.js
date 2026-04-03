@@ -193,6 +193,9 @@ function extractContentRecursive(items, defaultType) {
 }
 
 function shouldSkipPath(pathValue) {
+  if (isFragmentStatusPath(pathValue)) {
+    return true;
+  }
   if (SKIP_EXACT_PATHS.has(pathValue)) {
     return true;
   }
@@ -202,6 +205,13 @@ function shouldSkipPath(pathValue) {
     }
   }
   return false;
+}
+
+function isFragmentStatusPath(pathValue) {
+  if (!pathValue || pathValue === 'response/status') {
+    return false;
+  }
+  return /^response\/fragments\/-?\d+\/status$/i.test(pathValue);
 }
 
 function isCitation(text) {
@@ -225,5 +235,6 @@ module.exports = {
   parseChunkForContent,
   extractContentRecursive,
   shouldSkipPath,
+  isFragmentStatusPath,
   isCitation,
 };
