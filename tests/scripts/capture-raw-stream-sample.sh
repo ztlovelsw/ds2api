@@ -47,11 +47,23 @@ for _ in $(seq 1 120); do
   sleep 1
 done
 
+REQUEST_BODY="$(python3 - <<'PY' "$MODEL" "$QUESTION"
+import json,sys
+model,question=sys.argv[1:3]
+payload={
+  'model':model,
+  'stream':True,
+  'messages':[{'role':'user','content':question}],
+}
+print(json.dumps(payload, ensure_ascii=False))
+PY
+)"
+
 curl -sS http://127.0.0.1:5001/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer ${API_KEY}" \
-  -d "{\"model\":\"${MODEL}\",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"${QUESTION}\"}]}" \
-  >"${OUT_DIR}/openai.stream.sse" || true
+  --data-binary "${REQUEST_BODY}" \
+  >"${OUT_DIR}/openai.stream.sse"
 
 curl -sS http://127.0.0.1:5001/admin/dev/captures \
   -H "Authorization: Bearer ${ADMIN_KEY}" \
