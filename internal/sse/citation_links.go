@@ -6,15 +6,16 @@ import (
 )
 
 type citationLinkCollector struct {
-	ordered  []string
-	seen     map[string]struct{}
-	explicit map[int]string
+	ordered     []string
+	seen        map[string]struct{}
+	explicitRaw map[int]string
+	hasZeroIdx  bool
 }
 
 func newCitationLinkCollector() *citationLinkCollector {
 	return &citationLinkCollector{
-		seen:     map[string]struct{}{},
-		explicit: map[int]string{},
+		seen:        map[string]struct{}{},
+		explicitRaw: map[int]string{},
 	}
 }
 
@@ -26,11 +27,9 @@ func (c *citationLinkCollector) ingestChunk(chunk map[string]any) {
 }
 
 func (c *citationLinkCollector) build() map[int]string {
-	out := make(map[int]string, len(c.explicit)+len(c.ordered))
-	for idx, u := range c.explicit {
-		if idx > 0 && strings.TrimSpace(u) != "" {
-			out[idx] = u
-		}
+	out := make(map[int]string, len(c.explicitRaw)+len(c.ordered))
+	for idx, u := range c.buildNormalizedExplicit() {
+		out[idx] = u
 	}
 	for i, u := range c.ordered {
 		idx := i + 1
@@ -39,6 +38,57 @@ func (c *citationLinkCollector) build() map[int]string {
 		}
 	}
 	return out
+}
+
+func (c *citationLinkCollector) buildNormalizedExplicit() map[int]string {
+	out := make(map[int]string, len(c.explicitRaw))
+
+	// Default behavior keeps positive indices as-is (one-based payloads).
+	for idx, u := range c.explicitRaw {
+		if idx <= 0 || strings.TrimSpace(u) == "" {
+			continue
+		}
+		out[idx] = u
+	}
+
+	if !c.hasZeroIdx {
+		return out
+	}
+
+	// If zero index appears, upstream may be using zero-based indices.
+	// Add shifted candidates and resolve conflicts using ordered appearance,
+	// which matches visible citation marker order in response text.
+	for rawIdx, u := range c.explicitRaw {
+		if rawIdx < 0 || strings.TrimSpace(u) == "" {
+			continue
+		}
+		normalized := rawIdx + 1
+		existing, exists := out[normalized]
+		if !exists {
+			out[normalized] = u
+			continue
+		}
+		if c.preferURLForIndex(normalized, existing, u) == u {
+			out[normalized] = u
+		}
+	}
+
+	return out
+}
+
+func (c *citationLinkCollector) preferURLForIndex(idx int, current, candidate string) string {
+	if idx <= 0 || idx > len(c.ordered) {
+		return current
+	}
+	expected := c.ordered[idx-1]
+	switch {
+	case strings.TrimSpace(expected) == "":
+		return current
+	case candidate == expected && current != expected:
+		return candidate
+	default:
+		return current
+	}
 }
 
 func (c *citationLinkCollector) walkValue(v any) {
@@ -66,20 +116,16 @@ func (c *citationLinkCollector) captureURLAndIndex(m map[string]any) {
 	if !hasIdx {
 		return
 	}
-	// DeepSeek citation indices in search results are zero-based (0,1,2,...),
-	// while visible markers are one-based ([citation:1], [citation:2], ...).
-	// Normalize all non-negative explicit indices to one-based to avoid
-	// misalignment when 3+ citations are present.
-	if idx >= 0 {
-		idx = idx + 1
-	}
-	if idx <= 0 {
+	if idx < 0 {
 		return
 	}
-	if existing, ok := c.explicit[idx]; ok && strings.TrimSpace(existing) != "" {
+	if idx == 0 {
+		c.hasZeroIdx = true
+	}
+	if existing, ok := c.explicitRaw[idx]; ok && strings.TrimSpace(existing) != "" {
 		return
 	}
-	c.explicit[idx] = url
+	c.explicitRaw[idx] = url
 }
 
 func (c *citationLinkCollector) addOrdered(url string) {
